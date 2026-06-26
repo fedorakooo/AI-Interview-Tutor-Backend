@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ResetPasswordMessageModel(BaseModel):
@@ -14,4 +14,6 @@ class ResetPasswordMessageModel(BaseModel):
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
         data["user_id"] = str(data["user_id"])
+        if isinstance(data["published_at"], datetime):
+            data["published_at"] = data["published_at"].isoformat()
         return data

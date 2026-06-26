@@ -9,6 +9,8 @@ class RabbitMQSettings(BaseSettings):
     user: str
     password: str
 
+    reset_password_queue_name: str = "reset-password-stream"
+
     timeout: float = 30
 
     model_config = SettingsConfigDict(env_prefix="RABBITMQ_", env_file=".env", extra="ignore")
@@ -21,14 +23,17 @@ class MongoSettings(BaseSettings):
     host: str = "mongodb"
     user: str
     password: str
-    authSource: str
+    auth_source: str
 
     db_name: str
     messages_collection_name: str
 
     @property
     def url(self) -> str:
-        return f"mongodb://{self.user}:{self.password}@{self.host}/{self.db_name}"
+        return (
+            f"mongodb://{self.user}:{self.password}@{self.host}:{self.port}/"
+            f"{self.db_name}?authSource={self.auth_source}"
+        )
 
     model_config = SettingsConfigDict(env_prefix="MONGODB_", env_file=".env", extra="ignore")
 
