@@ -18,15 +18,3 @@ class RabbitMQProducer(IRabbitMQProducer):
                 Message(body=message.encode(), delivery_mode=DeliveryMode.PERSISTENT),
                 routing_key=self.queue_name,
             )
-
-
-"""
-        message = {
-            "user_id": user.id,
-            "email": user.email,
-            "subject": "Password Reset Request",
-            "body": f"Click here to reset your password: [{settings.frontend_settings.reset_password_url}]",
-            "publishing_datetime": str(datetime.now()),
-        }
-
-"""

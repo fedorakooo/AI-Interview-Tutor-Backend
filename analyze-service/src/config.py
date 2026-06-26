@@ -22,6 +22,7 @@ class RabbitMQSettings(BaseSettings):
     password: str
 
     cv_analyzer_queue_name: str = "cv-analyze-stream"
+    cv_analysis_results_queue_name: str = "cv-analysis-results"
 
     timeout: float = 30
 
@@ -39,13 +40,17 @@ class MongoSettings(BaseSettings):
     host: str
     user: str
     password: str
+    auth_source: str = "ai_interview"
 
     db_name: str
     cv_analysis_collection_name: str
 
     @property
     def url(self) -> str:
-        return f"mongodb://{self.user}:{self.password}@{self.host}/{self.db_name}"
+        return (
+            f"mongodb://{self.user}:{self.password}@{self.host}:{self.port}/"
+            f"{self.db_name}?authSource={self.auth_source}"
+        )
 
     model_config = SettingsConfigDict(env_prefix="MONGODB_", env_file=".env", extra="ignore")
 
