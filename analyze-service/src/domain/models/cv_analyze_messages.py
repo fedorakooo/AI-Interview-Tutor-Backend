@@ -23,3 +23,9 @@ class CVResultAnalysisMessage(BaseModel):
     url: str
     body: str
     published_at: datetime
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        data = super().model_dump(**kwargs)
+        data["user_id"] = str(data["user_id"])
+        data["published_at"] = data["published_at"].isoformat()
+        return data
