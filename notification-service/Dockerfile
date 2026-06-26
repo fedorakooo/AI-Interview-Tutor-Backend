@@ -39,6 +39,4 @@ COPY --from=builder /app/pyproject.toml /app/poetry.lock ./
 COPY config.yaml ./
 COPY src ./src
 
-EXPOSE 8000
-
 CMD ["python3", "-m", "src.main"]

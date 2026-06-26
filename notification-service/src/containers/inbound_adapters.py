@@ -25,4 +25,5 @@ class InboundAdaptersContainer(DeclarativeContainer):
         connection_parameters=connection_parameters,
         reset_password_use_case=use_cases.reset_password_use_case,
         logger=logger,
+        queue_name=settings.rabbitmq_settings.reset_password_queue_name,
     )

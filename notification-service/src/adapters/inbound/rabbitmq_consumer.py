@@ -15,20 +15,22 @@ class RabbitMQConsumer(MessageBrokerPort):
         connection_parameters: ConnectionParameters,
         reset_password_use_case: ResetPasswordUseCase,
         logger: Logger,
+        queue_name: str,
     ):
         self.connection_parameters = connection_parameters
         self.reset_password_use_case = reset_password_use_case
         self.logger = logger
+        self.queue_name = queue_name
 
     def process_messages(self) -> None:
         with BlockingConnection(self.connection_parameters) as connection:
             with connection.channel() as channel:
                 channel.basic_qos(prefetch_count=5)
 
-                channel.queue_declare(queue="reset-password-stream", durable=True)
+                channel.queue_declare(queue=self.queue_name, durable=True)
 
                 consumer_tag = channel.basic_consume(
-                    queue="reset-password-stream",
+                    queue=self.queue_name,
                     on_message_callback=self._handle_message,
                 )
 
