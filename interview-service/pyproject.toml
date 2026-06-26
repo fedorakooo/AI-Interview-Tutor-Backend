@@ -9,7 +9,8 @@ python = "^3.12"
 fastapi = {extras = ["websocket"], version = "^0.116.1"}
 poetry = "^2.1.4"
 langgraph = {extras = ["sqllite"], version = "^0.6.4"}
-langchain = {extras = ["google-genai"], version = "^0.3.27"}
+langchain = "^0.3.27"
+langchain-google-genai = "^2.1.9"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 websocket = "^0.2.1"
 langgraph-checkpoint = "^2.1.1"
