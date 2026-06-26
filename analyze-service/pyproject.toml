@@ -8,6 +8,7 @@ authors = ["Aliaksandr Fedaraka <fedorakooo@gmain.com>"]
 python = "^3.12"
 langchain = "^0.3.27"
 langchain-google-genai = "^2.1.9"
+langchain-openai = "^0.3.31"
 langchain-community = "^0.3.27"
 pypdf = "^6.0.0"
 aioboto3 = "^15.1.0"

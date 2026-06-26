@@ -8,7 +8,7 @@ from src.agent.services.cv_analyzer import CVAnalyzer
 class AgentContainer(DeclarativeContainer):
     logger = Dependency()
 
-    llm = Resource(LLMFactory.create_google_llm)
+    llm = Resource(LLMFactory.create_llm)
 
     cv_analyzer = Singleton(
         CVAnalyzer,
