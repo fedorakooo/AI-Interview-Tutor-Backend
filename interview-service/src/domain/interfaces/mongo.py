@@ -11,6 +11,11 @@ class IMongoRepository(ABC):
         pass
 
     @abstractmethod
+    async def find_latest_by_field(self, field_name: str, field_value: str) -> dict[str, Any] | None:
+        """Gets the latest document matching a field value."""
+        pass
+
+    @abstractmethod
     async def insert_one(self, data: dict[str, Any]) -> str:
         """Inserts document and returns inserted id"""
         pass
