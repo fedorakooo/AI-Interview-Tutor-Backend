@@ -46,8 +46,7 @@ def sample_user_data():
         "email": faker.email(),
         "password": faker.password(),
         "username": faker.user_name(),
-        "name": faker.first_name(),
-        "surname": faker.last_name(),
+        "first_name": faker.first_name(),
+        "second_name": faker.last_name(),
         "phone_number": faker.phone_number(),
-        "group_id": None,
     }
