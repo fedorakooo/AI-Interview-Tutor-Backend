@@ -1,17 +1,17 @@
 from datetime import datetime
 
-from jwt_handler.abstractions import (
-    AbstractAccessTokenGenerator,
-    AbstractRefreshTokenGenerator,
-    AbstractTokenHandler,
-)
 from jwt_handler.dtos import TokenInfoDTO
 from jwt_handler.exceptions import InvalidTokenError
+from jwt_handler.interfaces import (
+    IAccessTokenGenerator,
+    IRefreshTokenGenerator,
+    ITokenHandler,
+)
 from jwt_handler.value_objects import AuthType, TokenType
 
-from src.domain.abstractions.database.uow import AbstractUnitOfWork
-from src.domain.abstractions.redis.redis_client import AbstractRedisClient
 from src.domain.exceptions.user_errors import UserBlockedError
+from src.domain.interfaces.database.uow import IUnitOfWork
+from src.domain.interfaces.redis.redis_client import IRedisClient
 
 
 class RefreshTokenUseCase:
@@ -19,11 +19,11 @@ class RefreshTokenUseCase:
 
     def __init__(
         self,
-        uow: AbstractUnitOfWork,
-        redis_client: AbstractRedisClient,
-        token_handler: AbstractTokenHandler,
-        access_token_generator: AbstractAccessTokenGenerator,
-        refresh_token_generator: AbstractRefreshTokenGenerator,
+        uow: IUnitOfWork,
+        redis_client: IRedisClient,
+        token_handler: ITokenHandler,
+        access_token_generator: IAccessTokenGenerator,
+        refresh_token_generator: IRefreshTokenGenerator,
     ):
         self.uow = uow
         self.redis_client = redis_client

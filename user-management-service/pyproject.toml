@@ -18,7 +18,15 @@ uvicorn = ">=0.35.0,<0.36.0"
 pydantic = { extras = ["email"], version = ">=2.11.7,<3.0.0" }
 python-multipart = "^0.0.20"
 redis = "^6.2.0"
-jwt-handler = { git = "https://github.com/fedorakooo/AI-Interview-Tutor.git", branch = "dev", subdirectory = "libs/jwt_handler" }
+jwt-handler = { path = "../libs/jwt_handler", develop = true }
+aio-pika = "^9.5.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+httpx = "^0.28.1"
+pytest-mock = "^3.15.1"
+faker = "^37.12.0"
 
 [build-system]
 requires = ["poetry-core"]

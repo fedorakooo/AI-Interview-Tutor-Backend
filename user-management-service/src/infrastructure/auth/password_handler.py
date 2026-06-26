@@ -1,9 +1,9 @@
 import bcrypt
 
-from src.domain.abstractions.auth.password_handler import AbstractPasswordHandler
+from src.domain.interfaces.auth.password_handler import IPasswordHandler
 
 
-class PasswordHandler(AbstractPasswordHandler):
+class PasswordHandler(IPasswordHandler):
     def hash_password(self, password: str) -> str:
         salt = bcrypt.gensalt()
         return bcrypt.hashpw(password.encode(), salt).decode("utf-8")

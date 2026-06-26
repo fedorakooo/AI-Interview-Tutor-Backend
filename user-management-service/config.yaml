@@ -18,8 +18,3 @@ logger:
   root:
     level: INFO
     handlers: [console]
-
-jwt_handler:
-  algorithm: "RS256"
-  access_token_expire_minutes: 10
-  refresh_token_expire_minutes: 20160 # 14 days

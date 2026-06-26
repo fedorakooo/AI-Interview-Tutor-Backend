@@ -1,17 +1,17 @@
-from jwt_handler.abstractions import (
-    AbstractAccessTokenGenerator,
-    AbstractRefreshTokenGenerator,
-)
 from jwt_handler.dtos import TokenInfoDTO
+from jwt_handler.interfaces import (
+    IAccessTokenGenerator,
+    IRefreshTokenGenerator,
+)
 from jwt_handler.value_objects import AuthType
 
-from src.domain.abstractions.auth.password_handler import AbstractPasswordHandler
-from src.domain.abstractions.database.uow import AbstractUnitOfWork
 from src.domain.exceptions.login_errors import (
     InvalidPasswordError,
     InvalidUsernameError,
 )
 from src.domain.exceptions.user_errors import UserBlockedError
+from src.domain.interfaces.auth.password_handler import IPasswordHandler
+from src.domain.interfaces.database.uow import IUnitOfWork
 
 
 class LoginUserUseCase:
@@ -19,10 +19,10 @@ class LoginUserUseCase:
 
     def __init__(
         self,
-        uow: AbstractUnitOfWork,
-        access_token_generator: AbstractAccessTokenGenerator,
-        refresh_token_generator: AbstractRefreshTokenGenerator,
-        password_handler: AbstractPasswordHandler,
+        uow: IUnitOfWork,
+        access_token_generator: IAccessTokenGenerator,
+        refresh_token_generator: IRefreshTokenGenerator,
+        password_handler: IPasswordHandler,
     ):
         self.uow = uow
         self.access_token_generator = access_token_generator
@@ -43,6 +43,7 @@ class LoginUserUseCase:
         )
 
         if not is_password_correct:
+            print(username, password)
             raise InvalidPasswordError()
 
         if user.is_blocked:

@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "src"
+version = "0.0.1"
+description = ""
+authors = ["Aliaksandr Fedaraka <fedorakooo@gmain.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["websocket"], version = "^0.116.1"}
+poetry = "^2.1.4"
+langgraph = {extras = ["sqllite"], version = "^0.6.4"}
+langchain = {extras = ["google-genai"], version = "^0.3.27"}
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+websocket = "^0.2.1"
+langgraph-checkpoint = "^2.1.1"
+langgraph-checkpoint-sqlite = "^2.0.11"
+pydantic-settings = "^2.10.1"
+langchain-openai = "^0.3.31"
+websockets = "^15.0.1"
+motor = "^3.7.1"
+pyyaml = "^6.0.2"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

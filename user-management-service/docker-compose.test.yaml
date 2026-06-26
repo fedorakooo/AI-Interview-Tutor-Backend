@@ -1,0 +1,61 @@
+services:
+  test_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    env_file: ./.env.test
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs/test_logs:/app/logs
+    depends_on:
+      - test_database
+      - test_redis
+      - test_rabbitmq
+
+  test_database:
+    image: postgres:12
+    container_name: test_database
+    hostname: database
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_NAME}
+    volumes:
+      - /var/lib/postgres/test_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  test_redis:
+    image: redis:8.0
+    container_name: test_redis
+    hostname: ${REDIS_HOST}
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_USER=${REDIS_USER}
+      - REDIS_USER_PASSWORD=${REDIS_USER_PASSWORD}
+    ports:
+      - "6379:6379"
+    command: >
+      sh -c '
+        mkdir -p /usr/local/etc/redis &&
+        echo "bind 0.0.0.0" > /usr/local/etc/redis/redis.conf &&
+        echo "requirepass $REDIS_PASSWORD" >> /usr/local/etc/redis/redis.conf &&
+        echo "appendonly yes" >> /usr/local/etc/redis/redis.conf &&
+        echo "appendfsync everysec" >> /usr/local/etc/redis/redis.conf &&
+        echo "user default on nopass ~* +@all" > /usr/local/etc/redis/users.acl &&
+        echo "user $REDIS_USER on >$REDIS_USER_PASSWORD ~* +@all" >> /usr/local/etc/redis/users.acl &&
+        redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
+      '
+    volumes:
+      - /test_redisdata:/data
+
+  test_rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: ${RABBITMQ_HOST}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}

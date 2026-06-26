@@ -12,6 +12,7 @@ from src.api.v1.models.validators.user_validators import (
 from src.application.dtos.user import (
     UserCreateDTO,
     UserReadDTO,
+    UsersReadDTO,
     UserUpdateDTO,
 )
 from src.domain.value_objects.user_role import UserRole
@@ -102,4 +103,16 @@ class UserUpdateRequest(BaseModel):
             second_name=self.second_name,
             phone_number=self.phone_number,
             email=self.email,
+        )
+
+
+class UsersResponse(BaseModel):
+    users: list[UserResponse]
+    total: int
+
+    @classmethod
+    def from_dto(cls, users_dto: UsersReadDTO) -> "UsersResponse":
+        return UsersResponse(
+            users=[UserResponse.from_dto(user) for user in users_dto.users],
+            total=users_dto.total,
         )

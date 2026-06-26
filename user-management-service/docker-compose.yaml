@@ -9,6 +9,7 @@ services:
     depends_on:
       - database
       - redis
+      - rabbitmq
 
   database:
     image: postgres:12
@@ -45,3 +46,12 @@ services:
       '
     volumes:
       - /redisdata:/data
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}

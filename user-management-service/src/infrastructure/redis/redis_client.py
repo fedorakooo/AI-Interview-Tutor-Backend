@@ -1,9 +1,9 @@
 from redis.asyncio import Redis
 
-from src.domain.abstractions.redis.redis_client import AbstractRedisClient
+from src.domain.interfaces.redis.redis_client import IRedisClient
 
 
-class RedisClient(AbstractRedisClient):
+class RedisClient(IRedisClient):
     def __init__(self, redis: Redis):
         self.redis = redis
 

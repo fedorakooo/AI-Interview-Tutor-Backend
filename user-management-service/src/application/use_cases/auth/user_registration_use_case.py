@@ -2,8 +2,8 @@ import uuid
 
 from src.application.dtos.user import UserCreateDTO, UserReadDTO
 from src.application.mappers.user_mapper import UserMapper
-from src.domain.abstractions.auth.password_handler import AbstractPasswordHandler
-from src.domain.abstractions.database.uow import AbstractUnitOfWork
+from src.domain.interfaces.auth.password_handler import IPasswordHandler
+from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.user_role import UserRole
 
 
@@ -12,8 +12,8 @@ class UserRegistrationUseCase:
 
     def __init__(
         self,
-        uow: AbstractUnitOfWork,
-        password_handler: AbstractPasswordHandler,
+        uow: IUnitOfWork,
+        password_handler: IPasswordHandler,
     ):
         self.uow = uow
         self.password_handler = password_handler

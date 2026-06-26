@@ -1,18 +1,16 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.abstractions.database.repositories.user_repository import (
-    AbstractUserRepository,
-)
-from src.domain.abstractions.database.uow import AbstractUnitOfWork
+from src.domain.interfaces.database.repositories.user_repository import IUserRepository
+from src.domain.interfaces.database.uow import IUnitOfWork
 
 
-class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
+class SqlAlchemyUnitOfWork(IUnitOfWork):
     """SQLAlchemy implementation of the UnitOfWork pattern."""
 
     def __init__(
         self,
         session: AsyncSession,
-        user_repository: AbstractUserRepository,
+        user_repository: IUserRepository,
     ):
         self._session = session
         self._user_repository = user_repository
@@ -40,5 +38,5 @@ class SqlAlchemyUnitOfWork(AbstractUnitOfWork):
         await self._session.rollback()
 
     @property
-    def user_repository(self) -> AbstractUserRepository:
+    def user_repository(self) -> IUserRepository:
         return self._user_repository
