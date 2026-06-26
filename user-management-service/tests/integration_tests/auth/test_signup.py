@@ -10,8 +10,8 @@ async def test_signup_success(test_client, sample_user_data):
     data = response.json()
     assert data["email"] == sample_user_data["email"]
     assert data["username"] == sample_user_data["username"]
-    assert data["name"] == sample_user_data["name"]
-    assert data["surname"] == sample_user_data["surname"]
+    assert data["first_name"] == sample_user_data["first_name"]
+    assert data["second_name"] == sample_user_data["second_name"]
     assert "id" in data
 
 
@@ -92,10 +92,9 @@ async def test_signup_invalid_data_email(test_client):
             "email": "invalid-email",
             "password": faker.password(),
             "username": faker.user_name(),
-            "name": faker.first_name(),
-            "surname": faker.last_name(),
+            "first_name": faker.first_name(),
+            "second_name": faker.last_name(),
             "phone_number": faker.phone_number(),
-            "group_id": None,
         },
     )
     assert response.status_code == 422

@@ -19,6 +19,11 @@ class IUserRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_email(self, email: str) -> User | None:
+        """Returns one user by email or None."""
+        pass
+
+    @abstractmethod
     async def get_users(self, user_filter: UserFilter) -> tuple[list[User], int]:
         """Returns users based on filter."""
         pass

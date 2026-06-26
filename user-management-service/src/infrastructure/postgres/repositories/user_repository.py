@@ -30,6 +30,12 @@ class UserPostgresRepository(IUserRepository):
         user_orm = result.scalar_one_or_none()
         return user_orm.to_entity() if user_orm else None
 
+    async def get_by_email(self, email: str) -> User | None:
+        query = select(UserORM).where(UserORM.email == email)
+        result = await self._session.execute(query)
+        user_orm = result.scalar_one_or_none()
+        return user_orm.to_entity() if user_orm else None
+
     async def get_users(self, user_filter: UserFilter) -> tuple[list[User], int]:
         sort_column = getattr(UserORM, user_filter.sort_by)
         sort_expr = asc(sort_column) if user_filter.order_by == OrderField.ASC else desc(sort_column)

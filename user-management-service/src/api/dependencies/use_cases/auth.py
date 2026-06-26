@@ -14,14 +14,18 @@ from src.api.dependencies.auth import (
     get_token_handler,
 )
 from src.api.dependencies.database import get_unit_of_work
+from src.api.dependencies.rabbitmq import get_reset_password_producer
 from src.api.dependencies.redis import get_redis_client
+from src.application.use_cases.auth.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
+from src.application.use_cases.auth.request_reset_password_use_case import RequestResetPasswordUseCase
 from src.application.use_cases.auth.user_login_use_case import LoginUserUseCase
 from src.application.use_cases.auth.user_registration_use_case import (
     UserRegistrationUseCase,
 )
 from src.domain.interfaces.auth.password_handler import IPasswordHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
+from src.domain.interfaces.rabbitmq.rabbitmq_producer import IRabbitMQProducer
 from src.domain.interfaces.redis.redis_client import IRedisClient
 
 
@@ -62,4 +66,28 @@ def get_refresh_token_use_case(
         token_handler=token_handler,
         uow=uow,
         redis_client=redis_client,
+    )
+
+
+def get_request_reset_password_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+    reset_password_producer: Annotated[IRabbitMQProducer, Depends(get_reset_password_producer)],
+) -> RequestResetPasswordUseCase:
+    return RequestResetPasswordUseCase(
+        uow=uow,
+        token_handler=token_handler,
+        reset_password_producer=reset_password_producer,
+    )
+
+
+def get_confirm_reset_password_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+    password_handler: Annotated[IPasswordHandler, Depends(get_password_handler)],
+) -> ConfirmResetPasswordUseCase:
+    return ConfirmResetPasswordUseCase(
+        uow=uow,
+        token_handler=token_handler,
+        password_handler=password_handler,
     )
