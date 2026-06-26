@@ -70,6 +70,14 @@ class JWTSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
+class FrontendSettings(BaseSettings):
+    """Frontend URLs used in outbound notification payloads."""
+
+    reset_password_url: str = "http://localhost:3000/reset-password"
+
+    model_config = SettingsConfigDict(env_prefix="FRONTEND_", env_file=".env", extra="ignore")
+
+
 class RabbitMQSettings(BaseSettings):
     """RabbitMQ connection settings."""
 
@@ -79,6 +87,7 @@ class RabbitMQSettings(BaseSettings):
     password: str
 
     cv_analyzer_queue_name: str = "cv-analyze-stream"
+    reset_password_queue_name: str = "reset-password-stream"
 
     timeout: float = 30
 
@@ -98,6 +107,7 @@ class Settings(BaseSettings):
     jwt_settings: JWTSettings = JWTSettings()
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
+    frontend_settings: FrontendSettings = FrontendSettings()
 
     def __init__(self) -> None:
         super().__init__()
