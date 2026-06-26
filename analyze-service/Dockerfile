@@ -27,6 +27,4 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY config.yaml ./
 COPY src ./src
 
-EXPOSE 8000
-
 CMD ["python3", "-m", "src.main"]
