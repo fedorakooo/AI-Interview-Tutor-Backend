@@ -15,5 +15,5 @@ class UseCasesContainer(DeclarativeContainer):
         cv_analyzer=agent.cv_analyzer,
         pdf_loader=outbound_adapters.pdf_loader,
         mongo_repository=outbound_adapters.mongo_cv_analysis_repository,
-        rabbitmq_producer=outbound_adapters.rabbitmq_producer_cv_analyzer,
+        rabbitmq_producer=outbound_adapters.rabbitmq_producer_cv_results,
     )

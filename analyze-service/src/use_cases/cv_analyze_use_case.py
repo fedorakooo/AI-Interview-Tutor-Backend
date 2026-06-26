@@ -34,7 +34,13 @@ class CVAnalyzeUseCase:
 
         analysis_result = await self.cv_analyzer.analyze(content=extracted_text)
 
-        await self.mongo_repository.insert_one(analysis_result.model_dump(mode="json"))
+        analysis_document = {
+            **analysis_result.model_dump(mode="json"),
+            "user_id": str(received_message.user_id),
+            "source_url": received_message.url,
+            "published_at": received_message.published_at.isoformat(),
+        }
+        await self.mongo_repository.insert_one(analysis_document)
 
         message_to_sent = CVResultAnalysisMessage(
             user_id=received_message.user_id,

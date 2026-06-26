@@ -37,8 +37,8 @@ class OutboundAdaptersContainer(DeclarativeContainer):
         PDFLoader,
     )
 
-    rabbitmq_producer_cv_analyzer = Factory(
+    rabbitmq_producer_cv_results = Factory(
         RabbitMQProducer,
         amqp_url=settings.rabbitmq_settings.url,
-        queue_name=settings.rabbitmq_settings.cv_analyzer_queue_name,
+        queue_name=settings.rabbitmq_settings.cv_analysis_results_queue_name,
     )
