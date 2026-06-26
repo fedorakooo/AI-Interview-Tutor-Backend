@@ -150,12 +150,15 @@ Ignores `.env`, `venv/`, `.idea/`, `__pycache__/`. Service-specific artifacts (f
 
 **Entrypoints.** [`src/main.py`](interview-service/src/main.py): mounts [`/api/v1`](interview-service/src/api/v1/router.py) and static files at **`/static`**; root `GET /` returns JSON pointing to **`/static/interview_client.html`**.
 
-**Configuration.** [`src/config.py`](interview-service/src/config.py): YAML-backed logging (`config.yaml` → `logger` key), nested LLM settings via Pydantic Settings:
+**Configuration.** [`src/config.py`](interview-service/src/config.py): YAML-backed logging (`config.yaml` → `logger` key), LLM settings via Pydantic Settings:
 
-- **`google_llm`** — default model `gemini-2.0-flash`, configurable temperature; env vars such as `GOOGLE_API_KEY`, `GOOGLE_LLM__MODEL` ([`.env.example`](interview-service/.env.example)).
-- **`custom_llm`** — OpenAI-compatible client defaults (`ai/gemma3`, base `http://localhost:12434/engines/v1`) for local experimentation.
+- **`LLM_PROVIDER`** — `openai` (default), `openrouter`, or `google` ([`.env.example`](interview-service/.env.example)).
+- **OpenAI** — `OPENAI_API_KEY`, `OPENAI_LLM__MODEL` (default `gpt-4o-mini`), `OPENAI_LLM__TEMPERATURE`.
+- **OpenRouter** — `OPENROUTER_API_KEY`, `OPENROUTER_LLM__MODEL`, `OPENROUTER_LLM__API_BASE` (default `https://openrouter.ai/api/v1`), `OPENROUTER_LLM__TEMPERATURE`.
+- **Google Gemini** — `GOOGLE_API_KEY`, `GOOGLE_LLM__MODEL` (default `gemini-2.0-flash`), `GOOGLE_LLM__TEMPERATURE`.
+- **`INTERVIEW_LLM__TEMPERATURE`** — optional per-service temperature override.
 
-**LLM wiring.** [`src/agent/llm.py`](interview-service/src/agent/llm.py): `LLMFactory.create_google_llm()` supplies the default graph LLM (Gemini); alternative factories support other deployment profiles.
+**LLM wiring.** [`src/agent/llm.py`](interview-service/src/agent/llm.py): `LLMFactory.create_llm()` selects the provider from `LLM_PROVIDER` and returns a LangChain `BaseChatModel` (`ChatOpenAI` for OpenAI/OpenRouter, `ChatGoogleGenerativeAI` for Google).
 
 **Agent graph.** [`create_interview_workflow()`](interview-service/src/agent/workflow.py): LangGraph `StateGraph` over [`InterviewState`](interview-service/src/domain/models/interview_state.py). Nodes include greeting, soft/hard question askers, small talk, wrap-up, question routing, and answer evaluation. Conditional edges:
 
@@ -171,7 +174,7 @@ Ignores `.env`, `venv/`, `.idea/`, `__pycache__/`. Service-specific artifacts (f
 
 **Reference demo vs production profile.** [`SAMPLE_CV`](interview-service/src/agent/data/sample_data.py) backs the static demo. Production deployments bind **`user_id`** and CV context to authenticated sessions and structured outputs from **Analyze** (for example documents keyed by user or correlation id), so the agent tailors dialogue to the candidate’s profile.
 
-**Dependencies.** [`interview-service/pyproject.toml`](interview-service/pyproject.toml): FastAPI with websockets, LangGraph + SQLite extras, LangChain Google GenAI, checkpoint SQLite, pydantic-settings.
+**Dependencies.** [`interview-service/pyproject.toml`](interview-service/pyproject.toml): FastAPI with websockets, LangGraph + SQLite extras, LangChain, LangChain OpenAI, LangChain Google GenAI (optional provider), checkpoint SQLite, pydantic-settings.
 
 ---
 
@@ -179,7 +182,9 @@ Ignores `.env`, `venv/`, `.idea/`, `__pycache__/`. Service-specific artifacts (f
 
 **Entrypoints.** [`src/main.py`](analyze-service/src/main.py): wires [`Container`](analyze-service/src/containers/container.py), waits for RabbitMQ, runs **`await rabbitmq_consumer.process_messages()`** (async forever).
 
-**Configuration.** [`src/config.py`](analyze-service/src/config.py): **`S3_*`**, **`RABBITMQ_*`** (inbound **`cv-analyze-stream`**, results **`cv-analysis-results`**), **`MONGODB_*`** (includes **`cv_analysis_collection_name`**). Logging can be driven from [`config.yaml`](analyze-service/config.yaml) via the container’s `dictConfig` resource.
+**Configuration.** [`src/config.py`](analyze-service/src/config.py): **`S3_*`**, **`RABBITMQ_*`** (inbound **`cv-analyze-stream`**, results **`cv-analysis-results`**), **`MONGODB_*`** (includes **`cv_analysis_collection_name`**), and shared LLM settings (`LLM_PROVIDER`, provider-specific keys/models, **`ANALYZE_LLM__TEMPERATURE`** default `0.2`). Logging can be driven from [`config.yaml`](analyze-service/config.yaml) via the container’s `dictConfig` resource.
+
+**LLM wiring.** [`src/agent/llm.py`](analyze-service/src/agent/llm.py): `LLMFactory.create_llm()` uses the same `LLM_PROVIDER` switch as interview-service; [`CVAnalyzer`](analyze-service/src/agent/services/cv_analyzer.py) calls structured output via `with_structured_output(CVData)`.
 
 **Pipeline.** [`RabbitMQConsumer`](analyze-service/src/adapters/inbound/rabbitmq_consumer.py):
 
@@ -272,7 +277,7 @@ poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 cd interview-service
-cp .env.example .env   # at minimum GOOGLE_API_KEY for default Gemini stack
+cp .env.example .env   # set LLM_PROVIDER and the matching API key (e.g. OPENAI_API_KEY)
 poetry install
 poetry run uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
