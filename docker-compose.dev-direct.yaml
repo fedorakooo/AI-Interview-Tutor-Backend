@@ -1,0 +1,11 @@
+# Optional override for direct access to app services without nginx.
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.dev-direct.yaml up -d
+
+services:
+  user-management:
+    ports:
+      - "${USER_MANAGEMENT_PUBLISHED_PORT:-8000}:8000"
+
+  interview-service:
+    ports:
+      - "${INTERVIEW_SERVICE_PUBLISHED_PORT:-8001}:8001"

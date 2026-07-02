@@ -9,7 +9,8 @@ python = "^3.12"
 fastapi = {extras = ["websocket"], version = "^0.116.1"}
 poetry = "^2.1.4"
 langgraph = {extras = ["sqllite"], version = "^0.6.4"}
-langchain = {extras = ["google-genai"], version = "^0.3.27"}
+langchain = "^0.3.27"
+langchain-google-genai = "^2.1.9"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 websocket = "^0.2.1"
 langgraph-checkpoint = "^2.1.1"
@@ -19,7 +20,14 @@ langchain-openai = "^0.3.31"
 websockets = "^15.0.1"
 motor = "^3.7.1"
 pyyaml = "^6.0.2"
+jwt-handler = { path = "../libs/jwt_handler", develop = true }
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

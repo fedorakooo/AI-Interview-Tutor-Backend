@@ -1,18 +1,25 @@
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent
 SOFT_QUESTIONS_JSON_PATH = BASE_DIR / "data" / "soft_questions.json"
 
 
+class LLMProvider(str, Enum):
+    OPENAI = "openai"
+    OPENROUTER = "openrouter"
+    GOOGLE = "google"
+
+
 class LLMConfig(BaseSettings):
     model: str
     temperature: float = 0.6
     api_base: str | None = None
-    api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -35,6 +42,12 @@ class MongoSettings(BaseSettings):
         )
 
     model_config = SettingsConfigDict(env_prefix="MONGODB_", env_file=".env", extra="ignore")
+
+
+class JWTSettings(BaseSettings):
+    public_key: str = ""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 class AppSettings(BaseSettings):
@@ -61,15 +74,45 @@ class LoggerSettings(BaseSettings):
 
 
 class Settings(BaseSettings):
+    environment: str = "development"
+    debug: bool = True
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
+
+    llm_provider: LLMProvider = LLMProvider.OPENAI
+
+    openai_api_key: str = ""
+    openai_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gpt-4o-mini"))
+
+    openrouter_api_key: str = ""
+    openrouter_llm: LLMConfig = Field(
+        default_factory=lambda: LLMConfig(
+            model="openai/gpt-4o-mini",
+            api_base="https://openrouter.ai/api/v1",
+        )
+    )
+
+    google_api_key: str = ""
+    google_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gemini-2.0-flash"))
+
+    interview_llm_temperature: float | None = Field(default=None, validation_alias="INTERVIEW_LLM__TEMPERATURE")
+
     logger_settings: LoggerSettings = LoggerSettings()
     app_settings: AppSettings = AppSettings()
     mongo_settings: MongoSettings = MongoSettings()
-    google_llm: LLMConfig = LLMConfig(model="gemini-2.0-flash")
-    custom_llm: LLMConfig = LLMConfig(
-        model="ai/gemma3",
-        api_base="http://localhost:12434/engines/v1",
-        api_key="ignored",
+    jwt_settings: JWTSettings = JWTSettings()
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_nested_delimiter="__",
+        extra="ignore",
     )
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     def __init__(self) -> None:
         super().__init__()
