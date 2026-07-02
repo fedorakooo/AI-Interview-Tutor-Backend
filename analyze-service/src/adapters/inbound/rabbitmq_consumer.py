@@ -26,7 +26,7 @@ class RabbitMQConsumer(IRabbitMQConsumer):
         self.connection = await connect_robust(self.amqp_url)
         async with self.connection:
             channel = await self.connection.channel()
-            await channel.set_qos(prefetch_count=5)
+            await channel.set_qos(prefetch_count=3)
 
             cv_queue = await channel.declare_queue(settings.rabbitmq_settings.cv_analyzer_queue_name, durable=True)
 
