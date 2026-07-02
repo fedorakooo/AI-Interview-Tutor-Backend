@@ -2,6 +2,11 @@ services:
   app:
     build: ./
     env_file: ./.env
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: "2"
     depends_on:
       - rabbitmq
       - mongodb

@@ -50,6 +50,15 @@ class RabbitMQSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="RABBITMQ_", env_file=".env", extra="ignore")
 
 
+class DoclingSettings(BaseSettings):
+    """Docling PDF extraction settings."""
+
+    do_ocr: bool = True
+    do_table_structure: bool = True
+
+    model_config = SettingsConfigDict(env_prefix="DOCLING_", env_file=".env", extra="ignore")
+
+
 class MongoSettings(BaseSettings):
     """MongoDB connection settings."""
 
@@ -96,6 +105,7 @@ class Settings(BaseSettings):
     s3_settings: S3Settings = S3Settings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     mongo_settings: MongoSettings = MongoSettings()
+    docling_settings: DoclingSettings = DoclingSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",
