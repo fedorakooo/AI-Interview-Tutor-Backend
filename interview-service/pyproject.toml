@@ -20,7 +20,14 @@ langchain-openai = "^0.3.31"
 websockets = "^15.0.1"
 motor = "^3.7.1"
 pyyaml = "^6.0.2"
+jwt-handler = { path = "../libs/jwt_handler", develop = true }
 
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

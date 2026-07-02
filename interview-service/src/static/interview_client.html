@@ -125,7 +125,7 @@
         <div class="connection-form">
             <h3>Connect to Interview</h3>
             <input type="text" id="userId" placeholder="Enter User ID" value="user123">
-            <input type="text" id="cvData" placeholder="CV Data (JSON, optional)">
+            <input type="text" id="accessToken" placeholder="Access Token (from /api/v1/auth/token)">
             <button onclick="connectToInterview()" id="connectBtn">Start Interview</button>
             <button onclick="disconnectFromInterview()" id="disconnectBtn" class="hidden">End Interview</button>
         </div>
@@ -152,18 +152,20 @@
 
         function connectToInterview() {
             userId = document.getElementById('userId').value.trim();
-            const cvData = document.getElementById('cvData').value.trim();
+            const accessToken = document.getElementById('accessToken').value.trim();
 
             if (!userId) {
                 alert('Please enter a User ID');
                 return;
             }
 
-            // Build WebSocket URL
-            let wsUrl = `ws://localhost:8000/api/v1/interview/ws/${userId}`;
-            if (cvData) {
-                wsUrl += `?cv_data=${encodeURIComponent(cvData)}`;
+            if (!accessToken) {
+                alert('Please enter an Access Token');
+                return;
             }
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/v1/interview/ws/${userId}?token=${encodeURIComponent(accessToken)}`;
 
             try {
                 websocket = new WebSocket(wsUrl);

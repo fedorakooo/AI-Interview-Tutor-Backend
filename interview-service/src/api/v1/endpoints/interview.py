@@ -1,11 +1,12 @@
+import json
 from typing import Annotated
 from uuid import UUID
 
-import json
-
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from jwt_handler.value_objects import AccessTokenPayload
 
 from src.api.dependencies.mongo import get_cv_analysis_repository
+from src.api.security import verify_ws_token
 from src.api.v1.managers.interview_manager import interview_manager
 from src.domain.interfaces.mongo import IMongoRepository
 from src.domain.models.user_profile import UserProfile
@@ -25,6 +26,7 @@ def get_cv_data_resolver(
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: UUID,
+    _: Annotated[AccessTokenPayload, Depends(verify_ws_token)],
     cv_data_resolver: Annotated[CVDataResolver, Depends(get_cv_data_resolver)],
 ) -> None:
     user = UserProfile(id=user_id)
