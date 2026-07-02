@@ -34,7 +34,7 @@ COPY --from=builder /libs/jwt_handler /libs/jwt_handler
 
 COPY user-management-service/config.yaml user-management-service/alembic.ini ./
 COPY user-management-service/src ./src
-COPY docker/user-management/entrypoint.sh /entrypoint.sh
+COPY infra/user-management/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
