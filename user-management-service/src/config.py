@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -101,6 +102,10 @@ class RabbitMQSettings(BaseSettings):
 class Settings(BaseSettings):
     """Application settings container."""
 
+    environment: str = "development"
+    debug: bool = True
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
+
     postgres_settings: PostgresSettings = PostgresSettings()
     sql_alchemy_settings: SQLAlchemySettings = SQLAlchemySettings()
     logger_settings: LoggerSettings = LoggerSettings()
@@ -108,6 +113,15 @@ class Settings(BaseSettings):
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     frontend_settings: FrontendSettings = FrontendSettings()
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     def __init__(self) -> None:
         super().__init__()

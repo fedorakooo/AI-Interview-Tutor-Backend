@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).parent
@@ -44,6 +44,12 @@ class MongoSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="MONGODB_", env_file=".env", extra="ignore")
 
 
+class JWTSettings(BaseSettings):
+    public_key: str = ""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
 class AppSettings(BaseSettings):
     port: int = 8001
 
@@ -68,6 +74,10 @@ class LoggerSettings(BaseSettings):
 
 
 class Settings(BaseSettings):
+    environment: str = "development"
+    debug: bool = True
+    cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
+
     llm_provider: LLMProvider = LLMProvider.OPENAI
 
     openai_api_key: str = ""
@@ -89,12 +99,20 @@ class Settings(BaseSettings):
     logger_settings: LoggerSettings = LoggerSettings()
     app_settings: AppSettings = AppSettings()
     mongo_settings: MongoSettings = MongoSettings()
+    jwt_settings: JWTSettings = JWTSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_nested_delimiter="__",
         extra="ignore",
     )
+
+    @field_validator("cors_allowed_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: str | list[str]) -> list[str]:
+        if isinstance(value, str):
+            return [origin.strip() for origin in value.split(",") if origin.strip()]
+        return value
 
     def __init__(self) -> None:
         super().__init__()

@@ -2,17 +2,20 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, status
+from jwt_handler.value_objects import AccessTokenPayload
 
 from src.api.dependencies.use_cases.user_management import (
     get_update_user_use_case,
     get_user_by_id_use_case,
     get_users_use_case,
 )
+from src.api.security import require_roles
 from src.api.v1.models.filter import UserFilterRequest
 from src.api.v1.models.user import UserResponse, UsersResponse, UserUpdateRequest
 from src.application.use_cases.user_management.get_user_by_id_use_case import GetUserByIdUseCase
 from src.application.use_cases.user_management.get_users_use_case import GetUsersUseCase
 from src.application.use_cases.user_management.update_user_use_case import UpdateUserUseCase
+from src.domain.value_objects.user_role import UserRole
 
 router = APIRouter(prefix="", tags=["User Management"])
 
@@ -21,13 +24,15 @@ router = APIRouter(prefix="", tags=["User Management"])
     "/user/{user_id}",
     response_model=UserResponse,
     responses={
-        status.HTTP_403_FORBIDDEN: {"description": "Requesting user is blocked"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Not authenticated"},
+        status.HTTP_403_FORBIDDEN: {"description": "Insufficient permissions or user is blocked"},
         status.HTTP_404_NOT_FOUND: {"description": "User not found"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Unexpected server error"},
     },
 )
 async def get_user_by_id(
     user_id: UUID,
+    _: Annotated[AccessTokenPayload, Depends(require_roles(UserRole.ADMIN, UserRole.MODERATOR))],
     user_by_id_use_case: Annotated[GetUserByIdUseCase, Depends(get_user_by_id_use_case)],
 ) -> UserResponse:
     user = await user_by_id_use_case(user_id=user_id)
@@ -38,11 +43,13 @@ async def get_user_by_id(
     "/users",
     response_model=UsersResponse,
     responses={
-        status.HTTP_403_FORBIDDEN: {"description": "Requesting user is blocked"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Not authenticated"},
+        status.HTTP_403_FORBIDDEN: {"description": "Insufficient permissions or user is blocked"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Unexpected server error"},
     },
 )
 async def get_users(
+    _: Annotated[AccessTokenPayload, Depends(require_roles(UserRole.ADMIN, UserRole.MODERATOR))],
     users_use_case: Annotated[GetUsersUseCase, Depends(get_users_use_case)],
     user_filter_request: UserFilterRequest = Depends(),
 ) -> UsersResponse:
@@ -55,12 +62,14 @@ async def get_users(
     "/user/{user_id}",
     response_model=UserResponse,
     responses={
-        status.HTTP_403_FORBIDDEN: {"description": "Requesting user is blocked"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Not authenticated"},
+        status.HTTP_403_FORBIDDEN: {"description": "Insufficient permissions or user is blocked"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Unexpected server error"},
     },
 )
 async def update_user(
     user_id: UUID,
+    _: Annotated[AccessTokenPayload, Depends(require_roles(UserRole.ADMIN, UserRole.MODERATOR))],
     user_update_request: UserUpdateRequest,
     user_update_use_case: Annotated[UpdateUserUseCase, Depends(get_update_user_use_case)],
 ) -> UserResponse:

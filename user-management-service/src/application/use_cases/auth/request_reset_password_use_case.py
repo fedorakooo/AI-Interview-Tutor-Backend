@@ -1,7 +1,6 @@
 import json
 from datetime import UTC, datetime
 from typing import cast
-from uuid import UUID
 
 from jwt_handler.interfaces import ITokenHandler
 from jwt_handler.value_objects import RefreshTokenPayload
