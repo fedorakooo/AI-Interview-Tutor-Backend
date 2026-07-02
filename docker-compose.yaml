@@ -1,0 +1,269 @@
+name: ai-interview-tutor
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:12
+    hostname: postgres
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_NAME:-user_management}
+    ports:
+      - "${POSTGRES_PUBLISHED_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_NAME:-user_management}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  redis:
+    image: redis:8.0
+    hostname: redis
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
+      REDIS_USER: ${REDIS_USER:-app}
+      REDIS_USER_PASSWORD: ${REDIS_USER_PASSWORD:-redis}
+    ports:
+      - "${REDIS_PUBLISHED_PORT:-6379}:6379"
+    command: >
+      sh -c '
+        mkdir -p /usr/local/etc/redis &&
+        echo "bind 0.0.0.0" > /usr/local/etc/redis/redis.conf &&
+        echo "requirepass $$REDIS_PASSWORD" >> /usr/local/etc/redis/redis.conf &&
+        echo "appendonly yes" >> /usr/local/etc/redis/redis.conf &&
+        echo "appendfsync everysec" >> /usr/local/etc/redis/redis.conf &&
+        echo "user default on nopass ~* +@all" > /usr/local/etc/redis/users.acl &&
+        echo "user $$REDIS_USER on >$$REDIS_USER_PASSWORD ~* +@all" >> /usr/local/etc/redis/users.acl &&
+        redis-server /usr/local/etc/redis/redis.conf --aclfile /usr/local/etc/redis/users.acl
+      '
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    hostname: rabbitmq
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${RABBITMQ_PUBLISHED_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PUBLISHED_PORT:-15672}:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  mongodb:
+    image: bitnami/mongodb:latest
+    hostname: mongodb
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      MONGODB_ROOT_USER: ${MONGODB_ROOT_USER:-root}
+      MONGODB_ROOT_PASSWORD: ${MONGODB_ROOT_PASSWORD:-root}
+      MONGODB_USERNAME: ${MONGODB_USER:-app}
+      MONGODB_PASSWORD: ${MONGODB_PASSWORD:-app}
+      MONGODB_DATABASE: ${MONGODB_DB_NAME:-ai_interview}
+    ports:
+      - "${MONGODB_PUBLISHED_PORT:-27017}:27017"
+    volumes:
+      - mongodb_data:/bitnami/mongodb
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "-u",
+          "${MONGODB_ROOT_USER:-root}",
+          "-p",
+          "${MONGODB_ROOT_PASSWORD:-root}",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "db.adminCommand('ping')",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  localstack:
+    image: localstack/localstack:2.1
+    hostname: localstack
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${LOCALSTACK_PUBLISHED_PORT:-4566}:4566"
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ${S3_REGION_NAME:-us-east-1}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-cv-uploads}
+      S3_REGION_NAME: ${S3_REGION_NAME:-us-east-1}
+      PERSISTENCE: "1"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./docker/localstack/init-s3.sh:/etc/localstack/init/ready.d/init-s3.sh:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - backend
+
+  user-management:
+    build:
+      context: .
+      dockerfile: user-management-service/Dockerfile
+    hostname: user-management
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      RABBITMQ_HOST: rabbitmq
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+  interview-service:
+    build:
+      context: .
+      dockerfile: interview-service/Dockerfile
+    hostname: interview-service
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MONGODB_HOST: mongodb
+      PUBLIC_KEY: ${PUBLIC_KEY}
+    expose:
+      - "8001"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+
+  analyze-service:
+    build: ./analyze-service
+    hostname: analyze-service
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      MONGODB_HOST: mongodb
+      S3_ENDPOINT_URL: http://localstack:4566
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - backend
+
+  notification-service:
+    build: ./notification-service
+    hostname: notification-service
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      RABBITMQ_HOST: rabbitmq
+      MONGODB_HOST: mongodb
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    hostname: nginx
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d:ro
+    depends_on:
+      user-management:
+        condition: service_started
+      interview-service:
+        condition: service_healthy
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  mongodb_data:
+  localstack_data:

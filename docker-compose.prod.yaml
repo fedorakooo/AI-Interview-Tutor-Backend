@@ -1,0 +1,18 @@
+# Production override — hides infrastructure ports from the host.
+# Usage: docker compose -f docker-compose.yaml -f docker-compose.prod.yaml up -d
+
+services:
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  rabbitmq:
+    ports: !reset []
+
+  mongodb:
+    ports: !reset []
+
+  localstack:
+    ports: !reset []
