@@ -3,7 +3,7 @@ from dependency_injector.providers import Dependency, Factory
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from src.adapters.outbound.mongo import MongoRepository
-from src.adapters.outbound.pdf_loader import PDFLoader
+from src.adapters.outbound.pdf_loader import DoclingPDFLoader
 from src.adapters.outbound.rabbitmq_producer import RabbitMQProducer
 from src.adapters.outbound.s3 import S3Client
 from src.config import settings
@@ -34,7 +34,9 @@ class OutboundAdaptersContainer(DeclarativeContainer):
     )
 
     pdf_loader = Factory(
-        PDFLoader,
+        DoclingPDFLoader,
+        do_ocr=settings.docling_settings.do_ocr,
+        do_table_structure=settings.docling_settings.do_table_structure,
     )
 
     rabbitmq_producer_cv_results = Factory(
