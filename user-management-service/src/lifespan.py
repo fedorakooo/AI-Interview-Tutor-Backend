@@ -8,6 +8,7 @@ from src.api.dependencies.database import get_async_engine
 from src.api.dependencies.redis import get_redis
 from src.config import settings
 from src.infrastructure.logger.logger import logger
+from src.infrastructure.rabbitmq.cv_results_consumer import CVResultsConsumer
 
 
 def wait_for_rabbitmq(
@@ -33,10 +34,13 @@ async def lifespan(app: FastAPI):
     redis = get_redis()
     async_engine = get_async_engine()
     wait_for_rabbitmq()
+    cv_results_consumer = CVResultsConsumer(logger=logger)
+    await cv_results_consumer.start()
 
     try:
         yield
     finally:
+        await cv_results_consumer.stop()
         if redis:
             await redis.close()
         if async_engine:
