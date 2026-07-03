@@ -7,7 +7,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.agent.errors.cv_parser import CVParserException, ModelOutputParsingException
 from src.agent.interfaces.cv_analyzer import ICVAnalyzer
 from src.agent.prompts.cv_parser import SYSTEM_CV_PARSER_PROMPT
-from src.domain.models.cv_data import CVData
+from src.domain.services.skill_normalizer import SkillNormalizer
+from shared_models.cv.cv_data import CVData
 
 
 class CVAnalyzer(ICVAnalyzer):
@@ -27,10 +28,14 @@ class CVAnalyzer(ICVAnalyzer):
 
     async def analyze(self, content: str) -> CVData:
         try:
-            return await self._chain.invoke_async({"content": content})
+            cv_data: CVData = await self._chain.ainvoke({"content": content})
         except OutputParserException as exc:
             self.logger.error(f"Failed to parse LLM output into CVData structure: {exc}")
             raise ModelOutputParsingException(f"The model's output could not be parsed: {exc}") from exc
         except Exception as exc:
             self.logger.error(f"An unexpected error occurred during CV parsing: {exc}")
             raise CVParserException("An unexpected error occurred") from exc
+
+        if cv_data.skills is not None:
+            cv_data = cv_data.model_copy(update={"skills": SkillNormalizer().normalize(cv_data.skills)})
+        return cv_data

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from src.domain.models.cv_data import CVData
+from shared_models.cv.cv_data import CVData
 
 
 class ICVAnalyzer(ABC):
