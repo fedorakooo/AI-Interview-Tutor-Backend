@@ -1,0 +1,33 @@
+[tool.poetry]
+name = "practice-service"
+version = "0.0.1"
+description = "Personalized practice exercises for technical interview candidates"
+authors = ["Aliaksandr Fedaraka <fedorakooo@gmain.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+motor = "^3.7.1"
+aio-pika = "^9.5.0"
+langchain = "^0.3.27"
+langchain-openai = "^0.3.31"
+langchain-google-genai = "^2.1.9"
+pydantic-settings = "^2.10.1"
+pyyaml = "^6.0.2"
+jwt-handler = { path = "../libs/jwt_handler", develop = true }
+shared-models = { path = "../libs/shared_models", develop = true }
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+pytest-mock = "^3.14.1"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
