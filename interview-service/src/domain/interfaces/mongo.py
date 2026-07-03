@@ -21,6 +21,25 @@ class IMongoRepository(ABC):
         pass
 
     @abstractmethod
+    async def find_one_by_field(self, field_name: str, field_value: str) -> dict[str, Any] | None:
+        """Gets a document by an arbitrary field value."""
+        pass
+
+    @abstractmethod
+    async def find_many_by_field(
+        self,
+        field_name: str,
+        field_value: str,
+        *,
+        skip: int = 0,
+        limit: int = 20,
+        sort_field: str = "started_at",
+        sort_direction: int = -1,
+    ) -> list[dict[str, Any]]:
+        """Gets documents matching a field value with pagination."""
+        pass
+
+    @abstractmethod
     async def insert_one(self, data: dict[str, Any]) -> str:
         """Inserts document and returns inserted id"""
         pass
@@ -32,6 +51,16 @@ class IMongoRepository(ABC):
         update_data: dict[str, Any],
     ) -> bool:
         """Update document by ID"""
+        pass
+
+    @abstractmethod
+    async def update_one_by_field(
+        self,
+        field_name: str,
+        field_value: str,
+        update_data: dict[str, Any],
+    ) -> bool:
+        """Update document by an arbitrary field value."""
         pass
 
     @abstractmethod

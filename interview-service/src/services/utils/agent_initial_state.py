@@ -16,4 +16,5 @@ def create_agent_initial_state(user: UserProfile, cv_data: CVData) -> InterviewS
         soft_question_completed=0,
         hard_questions_turns=0,
         hard_question_completed=0,
+        interview_report=None,
     )

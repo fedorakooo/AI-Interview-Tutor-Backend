@@ -6,6 +6,7 @@ class OverallInterviewStage(StrEnum):
     SOFT_QUESTIONS = "Soft Questions"
     HARD_QUESTIONS = "Hard Questions"
     WRAP_UP = "Wrap Up"
+    COMPLETED = "Completed"
 
 
 class IntermediateInterviewStage(StrEnum):

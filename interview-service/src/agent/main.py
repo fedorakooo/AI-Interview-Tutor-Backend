@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from langgraph.constants import END
+from langgraph.checkpoint.memory import MemorySaver
 
 from src.agent.data.sample_data import SAMPLE_CV
 from src.agent.workflow import create_interview_workflow
@@ -11,7 +11,7 @@ from src.domain.value_objects.interview_stage import IntermediateInterviewStage,
 
 
 async def run_interview(profile: UserProfile):
-    interviewer = create_interview_workflow()
+    interviewer = create_interview_workflow(MemorySaver())
     interview_id = str(uuid.uuid4())
 
     state = {
@@ -25,6 +25,7 @@ async def run_interview(profile: UserProfile):
         "soft_question_completed": 0,
         "hard_questions_turns": 0,
         "hard_question_completed": 0,
+        "interview_report": None,
     }
 
     config = {"configurable": {"thread_id": interview_id}}
@@ -43,7 +44,7 @@ async def run_interview(profile: UserProfile):
 
         state["messages"].append((ConversationRole.USER, user_input))
 
-        if state["overall_stage"] == END:
+        if state["overall_stage"] == OverallInterviewStage.COMPLETED:
             break
 
         state = await interviewer.ainvoke(state, config)

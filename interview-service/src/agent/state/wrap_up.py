@@ -1,5 +1,4 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.constants import END
 
 from src.agent.llm import llm
 from src.agent.prompts.wrap_up import WRAP_UP_PROMPT_HUMAN, WRAP_UP_PROMPT_SYSTEM
@@ -23,6 +22,5 @@ async def wrap_up_node(state: InterviewState) -> InterviewState:
     content = response.content.strip()
 
     state["messages"].append((ConversationRole.AGENT, content))
-    state["overall_stage"] = END
 
     return state

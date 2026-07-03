@@ -20,3 +20,5 @@ class InterviewState(TypedDict):
 
     hard_questions_turns: int
     hard_question_completed: int
+
+    interview_report: dict[str, Any] | None
