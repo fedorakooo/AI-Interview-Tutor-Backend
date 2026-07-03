@@ -30,6 +30,24 @@ class MongoRepository(IMongoRepository):
         result = await self.collection.insert_one(data)
         return str(result.inserted_id)
 
+    async def upsert_by_correlation_id(self, correlation_id: str, document: dict[str, Any]) -> str:
+        result = await self.collection.update_one(
+            {"correlation_id": correlation_id},
+            {"$set": document},
+            upsert=True,
+        )
+        if result.upserted_id is not None:
+            return str(result.upserted_id)
+
+        existing = await self.collection.find_one({"correlation_id": correlation_id}, {"_id": 1})
+        if existing is None:
+            raise RuntimeError(f"Failed to resolve Mongo document id for correlation_id={correlation_id}")
+        return str(existing["_id"])
+
+    async def ensure_indexes(self) -> None:
+        await self.collection.create_index("correlation_id", unique=True)
+        await self.collection.create_index([("user_id", 1), ("published_at", -1)])
+
     async def update_one(
         self,
         id: str,
