@@ -8,12 +8,15 @@ from jwt_handler.value_objects import AccessTokenPayload
 from src.api.dependencies.mongo import get_cv_analysis_repository
 from src.api.security import verify_ws_token
 from src.api.v1.managers.interview_manager import interview_manager
+from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
 from src.domain.interfaces.mongo import IMongoRepository
 from src.domain.models.user_profile import UserProfile
 from src.logger import app_logger
 from src.services.cv_data_resolver import CVDataResolver
 
 router = APIRouter(prefix="/interview", tags=["Interview"])
+
+CV_NOT_READY_CLOSE_CODE = 4001
 
 
 def get_cv_data_resolver(
@@ -30,17 +33,33 @@ async def websocket_endpoint(
     cv_data_resolver: Annotated[CVDataResolver, Depends(get_cv_data_resolver)],
 ) -> None:
     user = UserProfile(id=user_id)
-    cv_data = await cv_data_resolver.resolve(str(user_id))
-
     user_id_str = str(user.id)
 
-    await interview_manager.start_interview(websocket, user, cv_data)
+    try:
+        resolution = await cv_data_resolver.resolve(user_id_str)
+    except CVNotReadyError as exc:
+        await websocket.accept()
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "error",
+                    "code": "CV_NOT_READY",
+                    "message": exc.message,
+                }
+            )
+        )
+        await websocket.close(code=CV_NOT_READY_CLOSE_CODE)
+        return
+
+    await interview_manager.start_interview(websocket, user, resolution.cv_data)
 
     await websocket.send_text(
         json.dumps(
             {
                 "type": "interview_started",
                 "user_id": user_id_str,
+                "cv_source": resolution.source,
+                "correlation_id": resolution.correlation_id,
             }
         )
     )

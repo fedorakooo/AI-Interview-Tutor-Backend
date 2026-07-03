@@ -16,6 +16,16 @@ class IMongoRepository(ABC):
         pass
 
     @abstractmethod
+    async def upsert_by_correlation_id(self, correlation_id: str, document: dict[str, Any]) -> str:
+        """Upserts document by correlation_id and returns document id."""
+        pass
+
+    @abstractmethod
+    async def ensure_indexes(self) -> None:
+        """Creates required collection indexes if they do not exist."""
+        pass
+
+    @abstractmethod
     async def update_one(
         self,
         id: str,

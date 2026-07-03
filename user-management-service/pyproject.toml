@@ -20,6 +20,8 @@ python-multipart = "^0.0.20"
 redis = "^6.2.0"
 jwt-handler = { path = "../libs/jwt_handler", develop = true }
 aio-pika = "^9.5.7"
+shared-models = { path = "../libs/shared_models", develop = true }
+aioboto3 = "^15.1.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"

@@ -155,6 +155,7 @@ services:
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
       RABBITMQ_HOST: rabbitmq
+      S3_ENDPOINT_URL: http://localstack:4566
     expose:
       - "8000"
     depends_on:
@@ -163,6 +164,8 @@ services:
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     networks:
       - backend
@@ -196,7 +199,9 @@ services:
       - backend
 
   analyze-service:
-    build: ./analyze-service
+    build:
+      context: .
+      dockerfile: analyze-service/Dockerfile
     hostname: analyze-service
     restart: unless-stopped
     init: true

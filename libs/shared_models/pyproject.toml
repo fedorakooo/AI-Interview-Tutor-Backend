@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "shared-models"
+version = "0.1.0"
+description = "Shared CV and messaging models for AI Interview Tutor microservices"
+authors = ["Aliaksandr Fedaraka <fedorakooo@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+pydantic = "^2.11.7"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -17,10 +17,15 @@ motor = "^3.7.1"
 dependency-injector = "^4.48.1"
 aio-pika = "^9.5.7"
 pydantic-settings = "^2.10.1"
+shared-models = { path = "../libs/shared_models", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
 pytest-mock = "^3.15.1"
+pytest-asyncio = "^1.2.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

@@ -21,11 +21,12 @@ class LLMConfig(BaseSettings):
 class S3Settings(BaseSettings):
     """S3 connection settings."""
 
-    access_key: str
-    secret_access_key: str
-    endpoint_url: str
-    bucket_name: str
-    region_name: str
+    access_key: str = "test"
+    secret_access_key: str = "test"
+    endpoint_url: str = "http://localstack:4566"
+    bucket_name: str = "cv-uploads"
+    region_name: str = "us-east-1"
+    cv_max_upload_bytes: int = 10 * 1024 * 1024
 
     model_config = SettingsConfigDict(env_prefix="S3_", env_file=".env", extra="ignore")
 
@@ -39,6 +40,7 @@ class RabbitMQSettings(BaseSettings):
     password: str
 
     cv_analyzer_queue_name: str = "cv-analyze-stream"
+    cv_analyzer_dlq_queue_name: str = "cv-analyze-stream.dlq"
     cv_analysis_results_queue_name: str = "cv-analysis-results"
 
     timeout: float = 30
