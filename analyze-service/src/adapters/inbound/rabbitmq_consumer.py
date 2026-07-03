@@ -2,17 +2,15 @@ import asyncio
 import json
 import logging
 
-from aio_pika import IncomingMessage, Message, connect_robust
+from aio_pika import IncomingMessage, connect_robust
 from aio_pika.abc import AbstractChannel, AbstractQueue, AbstractRobustConnection
 from pydantic import ValidationError
+from shared_models.messaging.retry_policy import MAX_RETRIES, MessageRetryPolicy, get_retry_count
 
 from src.config import settings
 from src.domain.adapters.inbound.rabbitmq_consumer import IRabbitMQConsumer
 from src.domain.errors.cv_analysis import CVAnalysisError
 from src.use_cases.cv_analyze_use_case import CVAnalyzeUseCase
-
-MAX_RETRIES = 3
-RETRY_HEADER = "x-retry-count"
 
 
 class RabbitMQConsumer(IRabbitMQConsumer):
@@ -21,10 +19,12 @@ class RabbitMQConsumer(IRabbitMQConsumer):
         amqp_url: str,
         logger: logging.Logger,
         cv_analyze_use_case: CVAnalyzeUseCase,
+        retry_policy: MessageRetryPolicy | None = None,
     ):
         self.amqp_url = amqp_url
         self.logger = logger
         self.cv_analyze_use_case = cv_analyze_use_case
+        self.retry_policy = retry_policy or MessageRetryPolicy()
         self.connection: AbstractRobustConnection | None = None
 
     async def process_messages(self) -> None:
@@ -56,8 +56,8 @@ class RabbitMQConsumer(IRabbitMQConsumer):
         channel: AbstractChannel,
         dlq: AbstractQueue,
     ) -> None:
-        queue_name = message.routing_key
-        retry_count = self._get_retry_count(message)
+        queue_name = message.routing_key or settings.rabbitmq_settings.cv_analyzer_queue_name
+        retry_count = get_retry_count(message.headers)
 
         try:
             event_data = json.loads(message.body.decode())
@@ -72,11 +72,27 @@ class RabbitMQConsumer(IRabbitMQConsumer):
             self.logger.info("Successfully processed message from queue: %s", queue_name)
         except json.JSONDecodeError as exc:
             self.logger.error("Failed to decode JSON from message. Body: %r. Error: %s", message.body, exc)
-            await self._send_to_dlq(channel, dlq, message.body, reason="invalid_json")
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="invalid_json",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
             await message.ack()
         except ValidationError as exc:
             self.logger.error("Invalid CV job payload: %s", exc)
-            await self._send_to_dlq(channel, dlq, message.body, reason="validation_error")
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="validation_error",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
             await message.ack()
         except CVAnalysisError as exc:
             if exc.retryable and retry_count < MAX_RETRIES:
@@ -86,53 +102,35 @@ class RabbitMQConsumer(IRabbitMQConsumer):
                     retry_count + 1,
                     MAX_RETRIES,
                 )
-                await self._republish_with_retry(channel, message, retry_count + 1)
+                await self.retry_policy.republish_with_retry(channel, message, retry_count + 1)
                 await message.ack()
                 return
 
             if exc.retryable:
-                await self._send_to_dlq(channel, dlq, message.body, reason=exc.code)
+                await self.retry_policy.send_to_dlq(
+                    channel,
+                    dlq.name,
+                    message.body,
+                    reason=exc.code,
+                    original_queue=queue_name,
+                    retry_count=retry_count,
+                    logger=self.logger,
+                )
             await message.ack()
         except Exception as exc:
             self.logger.error("Error processing message from queue %s: %s", queue_name, exc, exc_info=True)
             if retry_count < MAX_RETRIES:
-                await self._republish_with_retry(channel, message, retry_count + 1)
+                await self.retry_policy.republish_with_retry(channel, message, retry_count + 1)
                 await message.ack()
                 return
 
-            await self._send_to_dlq(channel, dlq, message.body, reason="unknown_error")
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="unknown_error",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
             await message.ack()
-
-    @staticmethod
-    def _get_retry_count(message: IncomingMessage) -> int:
-        headers = message.headers or {}
-        raw_count = headers.get(RETRY_HEADER, 0)
-        try:
-            return int(raw_count)
-        except (TypeError, ValueError):
-            return 0
-
-    async def _republish_with_retry(self, channel: AbstractChannel, message: IncomingMessage, retry_count: int) -> None:
-        headers = dict(message.headers or {})
-        headers[RETRY_HEADER] = retry_count
-        await channel.default_exchange.publish(
-            Message(
-                body=message.body,
-                headers=headers,
-                delivery_mode=message.delivery_mode,
-            ),
-            routing_key=message.routing_key,
-        )
-
-    async def _send_to_dlq(
-        self,
-        channel: AbstractChannel,
-        dlq: AbstractQueue,
-        body: bytes,
-        reason: str,
-    ) -> None:
-        await channel.default_exchange.publish(
-            Message(body=body, headers={"x-dead-letter-reason": reason}),
-            routing_key=dlq.name,
-        )
-        self.logger.error("Message sent to DLQ (%s), reason=%s", dlq.name, reason)

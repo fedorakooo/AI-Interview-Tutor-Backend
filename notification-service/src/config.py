@@ -10,8 +10,13 @@ class RabbitMQSettings(BaseSettings):
     password: str
 
     reset_password_queue_name: str = "reset-password-stream"
+    reset_password_dlq_queue_name: str = "reset-password-stream.dlq"
 
     timeout: float = 30
+
+    @property
+    def url(self) -> str:
+        return f"amqp://{self.user}:{self.password}@{self.host}:{self.port}/"
 
     model_config = SettingsConfigDict(env_prefix="RABBITMQ_", env_file=".env", extra="ignore")
 

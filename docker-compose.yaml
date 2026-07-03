@@ -242,7 +242,9 @@ services:
       - backend
 
   notification-service:
-    build: ./notification-service
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
     hostname: notification-service
     restart: unless-stopped
     init: true

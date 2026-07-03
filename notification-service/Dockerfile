@@ -14,7 +14,8 @@ RUN pip install --no-cache-dir poetry==2.0.0
 
 WORKDIR /app
 
-COPY poetry.lock pyproject.toml ./
+COPY libs/shared_models /libs/shared_models
+COPY notification-service/poetry.lock notification-service/pyproject.toml ./
 
 RUN poetry config virtualenvs.create false \
     && poetry install --no-root --no-interaction --no-ansi
@@ -33,10 +34,9 @@ WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /libs/shared_models /libs/shared_models
 
-COPY --from=builder /app/pyproject.toml /app/poetry.lock ./
-
-COPY config.yaml ./
-COPY src ./src
+COPY notification-service/config.yaml ./
+COPY notification-service/src ./src
 
 CMD ["python3", "-m", "src.main"]

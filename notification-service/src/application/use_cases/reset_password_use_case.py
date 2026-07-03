@@ -1,7 +1,8 @@
+from shared_models.messaging.reset_password import ResetPasswordMessage
+
 from src.domain.exceptions.not_sent_error import NotSentError
 from src.domain.ports.outbound.abstract_mongo_repository import AbstractMongoRepository
 from src.domain.ports.outbound.abstract_ses_client import AbstractSESClient
-from src.models.reset_password_message import ResetPasswordMessageModel
 
 
 class ResetPasswordUseCase:
@@ -12,20 +13,20 @@ class ResetPasswordUseCase:
         self.ses_client = ses_client
 
     def __call__(self, event_data: dict) -> None:
-        pydantic_message = ResetPasswordMessageModel(**event_data)
+        message = ResetPasswordMessage.model_validate(event_data)
 
-        self.mongo_repository.insert_one(pydantic_message.model_dump())
+        self.mongo_repository.insert_one(message.model_dump(mode="json"))
 
         is_sent = False
         send_attempts = 0
 
         with self.mongo_repository:
             while not is_sent and send_attempts < 5:
-                is_sent = self.ses_client.send_email(event_data["email"], event_data["subject"], event_data["body"])
+                is_sent = self.ses_client.send_email(message.email, message.subject, message.body)
                 send_attempts += 1
 
         if not is_sent:
             raise NotSentError(
-                recipient=event_data["email"],
+                recipient=message.email,
                 attempts=send_attempts,
             )

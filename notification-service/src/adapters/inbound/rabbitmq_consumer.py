@@ -1,61 +1,120 @@
+import asyncio
 import json
-from logging import Logger
+import logging
 
-from pika import BlockingConnection, ConnectionParameters
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic, BasicProperties
+from aio_pika import IncomingMessage, connect_robust
+from aio_pika.abc import AbstractChannel, AbstractQueue, AbstractRobustConnection
+from pydantic import ValidationError
+from shared_models.messaging.retry_policy import MAX_RETRIES, MessageRetryPolicy, get_retry_count
 
 from src.application.use_cases.reset_password_use_case import ResetPasswordUseCase
+from src.domain.exceptions.not_sent_error import NotSentError
 from src.domain.ports.inbound.abstract_message_broker_consumer import MessageBrokerPort
 
 
 class RabbitMQConsumer(MessageBrokerPort):
     def __init__(
         self,
-        connection_parameters: ConnectionParameters,
+        amqp_url: str,
         reset_password_use_case: ResetPasswordUseCase,
-        logger: Logger,
+        logger: logging.Logger,
         queue_name: str,
+        dlq_queue_name: str,
+        retry_policy: MessageRetryPolicy | None = None,
     ):
-        self.connection_parameters = connection_parameters
+        self.amqp_url = amqp_url
         self.reset_password_use_case = reset_password_use_case
         self.logger = logger
         self.queue_name = queue_name
+        self.dlq_queue_name = dlq_queue_name
+        self.retry_policy = retry_policy or MessageRetryPolicy()
+        self.connection: AbstractRobustConnection | None = None
 
-    def process_messages(self) -> None:
-        with BlockingConnection(self.connection_parameters) as connection:
-            with connection.channel() as channel:
-                channel.basic_qos(prefetch_count=5)
+    async def process_messages(self) -> None:
+        self.connection = await connect_robust(self.amqp_url)
+        async with self.connection:
+            channel = await self.connection.channel()
+            await channel.set_qos(prefetch_count=5)
 
-                channel.queue_declare(queue=self.queue_name, durable=True)
+            dlq = await channel.declare_queue(self.dlq_queue_name, durable=True)
+            queue = await channel.declare_queue(self.queue_name, durable=True)
 
-                consumer_tag = channel.basic_consume(
-                    queue=self.queue_name,
-                    on_message_callback=self._handle_message,
-                )
+            async def on_message(message: IncomingMessage) -> None:
+                await self._process_message(message, channel, dlq)
 
-                try:
-                    channel.start_consuming()
-                except KeyboardInterrupt:
-                    channel.basic_cancel(consumer_tag)
-                    connection.close()
+            await queue.consume(on_message)
 
-    def _handle_message(
-        self, channel: BlockingChannel, method: Basic.Deliver, properties: BasicProperties, body: bytes
-    ) -> None:
-        try:
-            event_data = json.loads(body.decode())
-            self.reset_password_use_case(event_data)
-            channel.basic_ack(method.delivery_tag)
-            self.logger.info(f"Received message from {event_data['email']}")
-        except Exception as exc:
-            self.logger.error(
-                f"Error processing message with delivery_tag: {method.delivery_tag}. Exception: {exc}", exc_info=True
-            )
+            self.logger.info("Reset-password consumer started. Waiting for messages...")
             try:
-                channel.basic_nack(method.delivery_tag, requeue=False)
-            except Exception as nack_exc:
-                self.logger.error(
-                    f"Failed to NACK message with delivery_tag: {method.delivery_tag}. Nack Exception: {nack_exc}",
-                    exc_info=True,
-                )
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                self.logger.info("Consumer cancelled, shutting down gracefully...")
+
+    async def _process_message(
+        self,
+        message: IncomingMessage,
+        channel: AbstractChannel,
+        dlq: AbstractQueue,
+    ) -> None:
+        queue_name = message.routing_key or self.queue_name
+        retry_count = get_retry_count(message.headers)
+
+        try:
+            event_data = json.loads(message.body.decode())
+            self.logger.info("Processing reset-password message from queue: %s", queue_name)
+            await asyncio.to_thread(self.reset_password_use_case, event_data)
+            await message.ack()
+            self.logger.info("Successfully processed reset-password message")
+        except json.JSONDecodeError as exc:
+            self.logger.error("Failed to decode JSON from message. Body: %r. Error: %s", message.body, exc)
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="invalid_json",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
+            await message.ack()
+        except ValidationError as exc:
+            self.logger.error("Invalid reset-password payload: %s", exc)
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="validation_error",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
+            await message.ack()
+        except NotSentError as exc:
+            self.logger.error("Email send failed after retries: %s", exc)
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="email_send_failed",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
+            await message.ack()
+        except Exception as exc:
+            self.logger.error("Error processing reset-password message: %s", exc, exc_info=True)
+            if retry_count < MAX_RETRIES:
+                await self.retry_policy.republish_with_retry(channel, message, retry_count + 1)
+                await message.ack()
+                return
+
+            await self.retry_policy.send_to_dlq(
+                channel,
+                dlq.name,
+                message.body,
+                reason="unknown_error",
+                original_queue=queue_name,
+                retry_count=retry_count,
+                logger=self.logger,
+            )
+            await message.ack()
