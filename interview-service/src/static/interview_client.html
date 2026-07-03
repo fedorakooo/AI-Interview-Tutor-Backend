@@ -233,9 +233,21 @@
             console.log('Received message:', data);
 
             switch (data.type) {
+                case 'error':
+                    if (data.code === 'CV_NOT_READY') {
+                        addMessage(data.message || 'Upload and wait for CV analysis before starting interview.', 'error');
+                        disconnectFromInterview();
+                        break;
+                    }
+                    addMessage(`Error: ${data.message}`, 'error');
+                    break;
+
                 case 'interview_started':
                     interviewId = data.interview_id;
-                    addMessage(`Interview started! ID: ${interviewId}`, 'system');
+                    addMessage(
+                        `Interview started (cv_source=${data.cv_source || 'unknown'})`,
+                        'system'
+                    );
                     break;
 
                 case 'agent_message':
@@ -247,10 +259,6 @@
                     setTimeout(() => {
                         disconnectFromInterview();
                     }, 2000);
-                    break;
-
-                case 'error':
-                    addMessage(`Error: ${data.message}`, 'error');
                     break;
 
                 case 'interview_status':

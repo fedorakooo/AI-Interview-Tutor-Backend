@@ -2736,6 +2736,23 @@ test = ["build[virtualenv] (>=1.0.3)", "filelock (>=3.4.0)", "ini2toml[lite] (>=
 type = ["importlib_metadata (>=7.0.2) ; python_version < \"3.10\"", "jaraco.develop (>=7.21) ; sys_platform != \"cygwin\"", "mypy (==1.14.*)", "pytest-mypy"]
 
 [[package]]
+name = "shared-models"
+version = "0.1.0"
+description = "Shared CV and messaging models for AI Interview Tutor microservices"
+optional = false
+python-versions = ">=3.12"
+groups = ["main"]
+files = []
+develop = true
+
+[package.dependencies]
+pydantic = "^2.11.7"
+
+[package.source]
+type = "directory"
+url = "../libs/shared_models"
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 description = "Tool to Detect Surrounding Shell"
@@ -3768,4 +3785,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "f5c392578e1b02e00d50171ea5703a80e0b2c782b297af6265bbef6df3d33171"
+content-hash = "4d6650e94689c3fe115a1be20a6c63adaf40f0e0339b1fec1616637439f31ea1"

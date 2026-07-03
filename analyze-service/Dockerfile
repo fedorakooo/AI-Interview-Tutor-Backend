@@ -16,7 +16,8 @@ RUN apt-get update && \
 
 RUN pip install --no-cache-dir poetry==2.1.3
 
-COPY poetry.lock pyproject.toml ./
+COPY libs/shared_models /libs/shared_models
+COPY analyze-service/poetry.lock analyze-service/pyproject.toml ./
 
 RUN poetry config virtualenvs.create false \
     && poetry install --no-root --no-interaction --no-ansi
@@ -40,8 +41,9 @@ RUN apt-get update && \
 
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /libs/shared_models /libs/shared_models
 
-COPY config.yaml ./
-COPY src ./src
+COPY analyze-service/config.yaml ./
+COPY analyze-service/src ./src
 
 CMD ["python3", "-m", "src.main"]

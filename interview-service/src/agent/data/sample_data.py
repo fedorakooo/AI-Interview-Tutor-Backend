@@ -1,4 +1,4 @@
-from src.domain.models.cv_data import CVData
+from shared_models.cv.cv_data import CVData
 
 SAMPLE_CV: CVData = CVData(
     user_name="Aliaksandr Fedaraka",
@@ -29,19 +29,19 @@ SAMPLE_CV: CVData = CVData(
         {"language": "English", "proficiency": "B1"},
     ],
     skills=[
-        "Python",
-        "FastAPI",
-        "Django",
-        "Django Rest Framework",
-        "SQL",
-        "Redis",
-        "MongoDB",
-        "Kafka",
-        "RabbitMQ",
-        "Docker",
-        "Kubernetes",
-        "CI/CD",
-        "AWS Cloud",
+        {"name": "Python", "category": "programming_language"},
+        {"name": "FastAPI", "category": "framework"},
+        {"name": "Django", "category": "framework"},
+        {"name": "Django REST Framework", "category": "framework"},
+        {"name": "SQL", "category": "database"},
+        {"name": "Redis", "category": "database"},
+        {"name": "MongoDB", "category": "database"},
+        {"name": "Kafka", "category": "messaging"},
+        {"name": "RabbitMQ", "category": "messaging"},
+        {"name": "Docker", "category": "devops"},
+        {"name": "Kubernetes", "category": "devops"},
+        {"name": "CI/CD", "category": "devops"},
+        {"name": "AWS", "category": "cloud"},
     ],
     additional_competitive_non_work_achievements=[
         "Participant in the 2024 ICPC Belarus Regional Contest",

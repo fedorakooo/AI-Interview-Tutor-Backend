@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from jwt_handler.exceptions.token_errors import TokenError
 
+from src.domain.exceptions.cv_upload_errors import CVUploadError
 from src.domain.exceptions.login_errors import LoginError
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.exceptions.user_errors import UserBlockedError
@@ -10,6 +11,13 @@ from src.infrastructure.postgres.exceptions.database_errors import DatabaseError
 
 
 def exception_container(app: FastAPI) -> None:
+    @app.exception_handler(CVUploadError)
+    async def cv_upload_exception_handler(request: Request, exc: CVUploadError):
+        return JSONResponse(
+            status_code=exc.http_status,
+            content={"detail": exc.message, "error_code": exc.error_code},
+        )
+
     @app.exception_handler(LoginError)
     async def login_exception_handler(request: Request, exc: LoginError):
         return JSONResponse(

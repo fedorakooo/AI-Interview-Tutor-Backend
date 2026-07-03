@@ -5,7 +5,7 @@ from fastapi import WebSocket
 from langgraph.graph import StateGraph
 
 from src.agent.workflow import create_interview_workflow
-from src.domain.models.cv_data import CVData
+from shared_models.cv.cv_data import CVData
 from src.domain.models.user_profile import UserProfile
 from src.domain.value_objects.conversation_role import ConversationRole
 from src.logger import app_logger

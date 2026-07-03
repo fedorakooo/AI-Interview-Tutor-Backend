@@ -79,6 +79,19 @@ class FrontendSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="FRONTEND_", env_file=".env", extra="ignore")
 
 
+class S3Settings(BaseSettings):
+    """S3 connection settings."""
+
+    access_key: str = ""
+    secret_access_key: str = ""
+    endpoint_url: str = "http://localstack:4566"
+    bucket_name: str = "cv-uploads"
+    region_name: str = "us-east-1"
+    cv_max_upload_bytes: int = 10 * 1024 * 1024
+
+    model_config = SettingsConfigDict(env_prefix="S3_", env_file=".env", extra="ignore")
+
+
 class RabbitMQSettings(BaseSettings):
     """RabbitMQ connection settings."""
 
@@ -88,6 +101,7 @@ class RabbitMQSettings(BaseSettings):
     password: str
 
     cv_analyzer_queue_name: str = "cv-analyze-stream"
+    cv_analysis_results_queue_name: str = "cv-analysis-results"
     reset_password_queue_name: str = "reset-password-stream"
 
     timeout: float = 30
@@ -113,6 +127,7 @@ class Settings(BaseSettings):
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     frontend_settings: FrontendSettings = FrontendSettings()
+    s3_settings: S3Settings = S3Settings()
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

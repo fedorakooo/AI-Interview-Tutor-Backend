@@ -12,6 +12,7 @@ RUN apt-get update && \
 RUN pip install --no-cache-dir poetry==2.1.3
 
 COPY libs/jwt_handler /libs/jwt_handler
+COPY libs/shared_models /libs/shared_models
 COPY interview-service/poetry.lock interview-service/pyproject.toml ./
 
 RUN poetry config virtualenvs.create false \
@@ -28,6 +29,7 @@ RUN apt-get update && \
 COPY --from=builder /usr/local/lib/python3.12 /usr/local/lib/python3.12
 COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /libs/jwt_handler /libs/jwt_handler
+COPY --from=builder /libs/shared_models /libs/shared_models
 
 COPY interview-service/config.yaml ./
 COPY interview-service/src ./src
