@@ -94,8 +94,3 @@ class CVAnalysisDocument(BaseModel):
         if self.extraction_metadata is not None:
             document["extraction_metadata"] = self.extraction_metadata.model_dump(mode="json")
         return document
-
-
-# Backward-compatible aliases for existing imports and docs.
-CVInitialAnalysisMessage = CVAnalysisJobMessage
-CVResultAnalysisMessage = CVAnalysisResultMessage

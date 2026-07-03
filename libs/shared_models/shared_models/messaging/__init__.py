@@ -3,8 +3,6 @@ from shared_models.messaging.cv_analysis import (
     CVAnalysisDocument,
     CVAnalysisJobMessage,
     CVAnalysisResultMessage,
-    CVInitialAnalysisMessage,
-    CVResultAnalysisMessage,
 )
 
 __all__ = [
@@ -12,7 +10,5 @@ __all__ = [
     "CVAnalysisDocument",
     "CVAnalysisJobMessage",
     "CVAnalysisResultMessage",
-    "CVInitialAnalysisMessage",
-    "CVResultAnalysisMessage",
     "ExtractionMetadata",
 ]
