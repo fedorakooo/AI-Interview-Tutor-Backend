@@ -33,8 +33,10 @@ def wait_for_rabbitmq(
 @inject
 async def main(
     rabbitmq_consumer: IRabbitMQConsumer = Provide[Container.inbound_adapters.rabbitmq_consumer],
+    mongo_repository=Provide[Container.outbound_adapters.mongo_cv_analysis_repository],
 ) -> None:
     wait_for_rabbitmq()
+    await mongo_repository.ensure_indexes()
 
     await rabbitmq_consumer.process_messages()
 
