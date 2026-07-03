@@ -1,3 +1,4 @@
+import asyncio
 import socket
 import time
 from logging import Logger
@@ -31,13 +32,13 @@ def wait_for_rabbitmq(
 
 
 @inject
-def main(
+async def main(
     message_broker_consumer: MessageBrokerPort = Provide[Container.inbound_adapters.message_broker_consumer],
     mongo_client: MongoClient = Provide[Container.outbound_adapters.mongo_client],
-):
+) -> None:
     wait_for_rabbitmq()
 
-    message_broker_consumer.process_messages()
+    await message_broker_consumer.process_messages()
 
     mongo_client.close()
 
@@ -48,4 +49,4 @@ if __name__ == "__main__":
 
     container.init_resources()
 
-    main()
+    asyncio.run(main())
