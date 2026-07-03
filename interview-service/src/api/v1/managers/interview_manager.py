@@ -1,143 +1,303 @@
 import json
-from datetime import datetime
+import socket
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi import WebSocket
-from langgraph.graph import StateGraph
-
-from src.agent.workflow import create_interview_workflow
+from langgraph.graph.state import CompiledStateGraph
 from shared_models.cv.cv_data import CVData
+from shared_models.interview.report import InterviewReport
+from shared_models.interview.session import InterviewSessionStatus
+
+from src.domain.models.interview_state import InterviewState
 from src.domain.models.user_profile import UserProfile
 from src.domain.value_objects.conversation_role import ConversationRole
+from src.domain.value_objects.interview_stage import OverallInterviewStage
+from src.infrastructure.redis.session_registry import RedisSessionRegistry
 from src.logger import app_logger
+from src.repositories.interview_session_repository import InterviewSessionRepository
 from src.services.utils.agent_initial_state import create_agent_initial_state
+
+SERVER_SHUTDOWN_CLOSE_CODE = 4002
+
+
+@dataclass
+class ActiveSession:
+    session_id: str
+    user_id: str
+    websocket: WebSocket
+    started_at: datetime
+    cv_correlation_id: str | None = None
 
 
 class InterviewConnectionManager:
-    def __init__(self, interview_workflow: StateGraph):
-        self.interview_workflow: StateGraph = interview_workflow
-        self._active_interviews: dict[str, dict] = {}
+    def __init__(
+        self,
+        interview_workflow: CompiledStateGraph,
+        session_registry: RedisSessionRegistry,
+        session_repository: InterviewSessionRepository,
+        instance_id: str,
+    ) -> None:
+        self.interview_workflow = interview_workflow
+        self.session_registry = session_registry
+        self.session_repository = session_repository
+        self.instance_id = instance_id
+        self._active_sessions: dict[str, ActiveSession] = {}
+        self._accepting_connections = True
+        self._is_shutting_down = False
 
-    async def start_interview(self, websocket: WebSocket, user: UserProfile, cv_data: CVData) -> None:
+    @staticmethod
+    def resolve_instance_id(configured_id: str) -> str:
+        if configured_id:
+            return configured_id
+        return socket.gethostname() or str(uuid4())
+
+    def _graph_config(self, session_id: str) -> dict:
+        return {"configurable": {"thread_id": session_id}}
+
+    async def start_interview(
+        self,
+        websocket: WebSocket,
+        user: UserProfile,
+        cv_data: CVData,
+        *,
+        cv_correlation_id: str | None = None,
+    ) -> str:
+        if not self._accepting_connections:
+            await websocket.close(code=SERVER_SHUTDOWN_CLOSE_CODE)
+            raise RuntimeError("Service is shutting down")
+
         await websocket.accept()
-
         user_id = str(user.id)
-
-        if user_id in self._active_interviews:
-            await self.end_interview(user_id)
-
+        session_id = str(uuid4())
         initial_state = create_agent_initial_state(user, cv_data)
 
-        self._active_interviews[user_id] = {
-            "websocket": websocket,
-            "state": initial_state,
-            "started_at": datetime.now(),
-            "is_active": True,
-        }
+        await self.session_repository.create_session(
+            session_id,
+            user_id,
+            cv_correlation_id=cv_correlation_id,
+            instance_id=self.instance_id,
+        )
+        await self.session_registry.register_session(session_id, user_id)
 
-        app_logger.info(f"Interview started for user: {user_id}")
+        self._active_sessions[session_id] = ActiveSession(
+            session_id=session_id,
+            user_id=user_id,
+            websocket=websocket,
+            started_at=datetime.now(UTC),
+            cv_correlation_id=cv_correlation_id,
+        )
 
-        await self._process_interview_step(user_id)
+        app_logger.info("Interview started for user=%s session=%s", user_id, session_id)
+        await self._process_interview_step(session_id, initial_state)
+        return session_id
 
-    async def handle_user_message(self, user_id: str, message: str):
-        if user_id not in self._active_interviews:
-            app_logger.error(f"Interview for user {user_id} not found")
+    async def handle_user_message(self, session_id: str, message: str) -> None:
+        session = self._active_sessions.get(session_id)
+        if not session:
+            app_logger.error("Interview session %s not found", session_id)
             return
 
-        interview_data = self._active_interviews[user_id]
-        interview_data["state"]["messages"].append((ConversationRole.USER, message))
+        snapshot = await self.interview_workflow.aget_state(self._graph_config(session_id))
+        if not snapshot or not snapshot.values:
+            app_logger.error("Checkpoint missing for session %s", session_id)
+            return
 
-        await self._process_interview_step(user_id)
+        state = dict(snapshot.values)
+        state["messages"].append((ConversationRole.USER, message))
+        await self._process_interview_step(session_id, state)
 
-    async def _process_interview_step(self, user_id: str):
-        interview_data = self._active_interviews[user_id]
-        state = interview_data["state"]
+    async def _process_interview_step(self, session_id: str, state: InterviewState) -> None:
+        session = self._active_sessions.get(session_id)
+        if not session:
+            return
 
         try:
-            config = {"configurable": {"thread_id": user_id}}
+            updated_state = await self.interview_workflow.ainvoke(state, self._graph_config(session_id))
+            await self.session_registry.refresh_session(session_id)
+            await self.session_repository.update_session(
+                session_id,
+                overall_stage=str(updated_state["overall_stage"]),
+                message_count=len(updated_state.get("messages", [])),
+            )
 
-            updated_state = await self.interview_workflow.ainvoke(state, config)
-            interview_data["state"] = updated_state
-
-            last_message = updated_state["messages"][-1]
-            if last_message[0] == ConversationRole.AGENT:
+            messages = updated_state.get("messages", [])
+            if messages and messages[-1][0] == ConversationRole.AGENT:
                 await self._send_message(
-                    user_id,
+                    session_id,
                     {
                         "type": "agent_message",
-                        "content": last_message[1],
-                        "stage": updated_state["overall_stage"].value,
-                        "timestamp": datetime.now().isoformat(),
+                        "content": messages[-1][1],
+                        "stage": str(updated_state["overall_stage"]),
+                        "session_id": session_id,
+                        "timestamp": datetime.now(UTC).isoformat(),
                     },
                 )
 
-            if updated_state["overall_stage"] == "END":
-                await self._send_message(
-                    user_id,
-                    {
-                        "type": "interview_complete",
-                        "message": "Interview completed successfully",
-                        "timestamp": datetime.now().isoformat(),
-                    },
-                )
-                await self.end_interview(user_id)
-
+            if updated_state["overall_stage"] == OverallInterviewStage.COMPLETED:
+                await self._complete_interview(session_id, updated_state)
         except Exception as exc:
-            app_logger.error(f"Error processing interview step: {exc}")
+            app_logger.error("Error processing interview step for session %s: %s", session_id, exc)
+            await self.session_repository.update_session(
+                session_id,
+                status=InterviewSessionStatus.FAILED,
+                completed_at=datetime.now(UTC),
+            )
             await self._send_message(
-                user_id,
+                session_id,
                 {
                     "type": "error",
                     "message": "Error processing interview step",
-                    "timestamp": datetime.now().isoformat(),
+                    "session_id": session_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
 
-    async def _send_message(self, user_id: str, message: dict):
-        if user_id not in self._active_interviews:
+    async def _complete_interview(self, session_id: str, state: InterviewState) -> None:
+        report_data = state.get("interview_report")
+        report = InterviewReport.model_validate(report_data) if report_data else None
+        await self.session_repository.update_session(
+            session_id,
+            status=InterviewSessionStatus.COMPLETED,
+            overall_stage=str(state["overall_stage"]),
+            message_count=len(state.get("messages", [])),
+            report=report,
+            completed_at=datetime.now(UTC),
+        )
+        await self.session_registry.update_status(session_id, InterviewSessionStatus.COMPLETED)
+        await self._send_message(
+            session_id,
+            {
+                "type": "interview_complete",
+                "message": "Interview completed successfully",
+                "session_id": session_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+        if report:
+            await self._send_message(
+                session_id,
+                {
+                    "type": "report_ready",
+                    "session_id": session_id,
+                    "report": report.model_dump(mode="json"),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+        await self._close_session(session_id)
+
+    async def _close_session(self, session_id: str) -> None:
+        session = self._active_sessions.pop(session_id, None)
+        if not session:
+            return
+        await self.session_registry.unregister_session(session_id, session.user_id)
+        try:
+            await session.websocket.close()
+        except Exception as exc:
+            app_logger.warning("Error closing websocket for session %s: %s", session_id, exc)
+
+    async def _send_message(self, session_id: str, message: dict) -> None:
+        session = self._active_sessions.get(session_id)
+        if not session:
+            return
+        try:
+            await session.websocket.send_text(json.dumps(message))
+        except Exception as exc:
+            app_logger.error("Error sending message to session %s: %s", session_id, exc)
+
+    async def end_interview(self, session_id: str) -> None:
+        session = self._active_sessions.get(session_id)
+        if not session:
             return
 
-        websocket = self._active_interviews[user_id]["websocket"]
-        try:
-            await websocket.send_text(json.dumps(message))
-        except Exception as exc:
-            app_logger.error(f"Error sending message to user {user_id}: {exc}")
+        await self.session_repository.update_session(
+            session_id,
+            status=InterviewSessionStatus.SUSPENDED,
+            completed_at=datetime.now(UTC),
+        )
+        await self._close_session(session_id)
+        app_logger.info("Interview ended for session %s", session_id)
 
-    async def end_interview(self, user_id: str):
-        if user_id not in self._active_interviews:
+    async def disconnect_user(self, session_id: str) -> None:
+        session = self._active_sessions.get(session_id)
+        if not session:
             return
 
-        interview_data = self._active_interviews[user_id]
-        interview_data["is_active"] = False
-        interview_data["completed_at"] = datetime.now()
+        snapshot = await self.interview_workflow.aget_state(self._graph_config(session_id))
+        overall_stage = "Unknown"
+        message_count = 0
+        if snapshot and snapshot.values:
+            overall_stage = str(snapshot.values.get("overall_stage", "Unknown"))
+            message_count = len(snapshot.values.get("messages", []))
 
-        try:
-            await interview_data["websocket"].close()
-        except Exception as exc:
-            app_logger.warning(f"Error closing websocket for user {user_id}: {exc}")
+        await self.session_repository.update_session(
+            session_id,
+            status=InterviewSessionStatus.SUSPENDED,
+            overall_stage=overall_stage,
+            message_count=message_count,
+            completed_at=datetime.now(UTC),
+        )
+        await self.session_registry.unregister_session(session_id, session.user_id)
+        self._active_sessions.pop(session_id, None)
+        app_logger.info("WebSocket disconnected for session %s", session_id)
 
-        del self._active_interviews[user_id]
+    def get_interview_status(self, session_id: str) -> dict | None:
+        session = self._active_sessions.get(session_id)
+        if not session:
+            return None
+        return {
+            "session_id": session_id,
+            "user_id": session.user_id,
+            "status": "active",
+            "started_at": session.started_at.isoformat(),
+        }
 
-        app_logger.info(f"Interview ended for user {user_id}")
+    @property
+    def is_shutting_down(self) -> bool:
+        return self._is_shutting_down
 
-    def disconnect_user(self, user_id: str):
-        if user_id in self._active_interviews:
-            print(f"User {user_id} disconnected")
-            del self._active_interviews[user_id]
+    @property
+    def accepting_connections(self) -> bool:
+        return self._accepting_connections
 
-    def get_interview_status(self, user_id: str) -> dict | None:
-        if user_id in self._active_interviews:
-            interview_data = self._active_interviews[user_id]
-            return {
-                "user_id": user_id,
-                "status": "active" if interview_data["is_active"] else "completed",
-                "stage": interview_data["state"]["overall_stage"].value,
-                "started_at": interview_data["started_at"],
-                "message_count": len(interview_data["state"]["messages"]),
-            }
-        return None
+    async def shutdown(self) -> None:
+        self._is_shutting_down = True
+        self._accepting_connections = False
+        session_ids = list(self._active_sessions.keys())
+        for session_id in session_ids:
+            session = self._active_sessions.get(session_id)
+            if not session:
+                continue
 
-    def get_user_interview(self, user_id: str) -> str | None:
-        return user_id if user_id in self._active_interviews else None
+            snapshot = await self.interview_workflow.aget_state(self._graph_config(session_id))
+            overall_stage = "Unknown"
+            message_count = 0
+            if snapshot and snapshot.values:
+                overall_stage = str(snapshot.values.get("overall_stage", "Unknown"))
+                message_count = len(snapshot.values.get("messages", []))
 
+            await self.session_repository.update_session(
+                session_id,
+                status=InterviewSessionStatus.SUSPENDED,
+                overall_stage=overall_stage,
+                message_count=message_count,
+                completed_at=datetime.now(UTC),
+            )
+            await self._send_message(
+                session_id,
+                {
+                    "type": "server_shutdown",
+                    "message": "Interview service is shutting down. Your progress has been saved.",
+                    "session_id": session_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+            await self.session_registry.unregister_session(session_id, session.user_id)
+            try:
+                await session.websocket.close(code=SERVER_SHUTDOWN_CLOSE_CODE)
+            except Exception as exc:
+                app_logger.warning("Error closing websocket during shutdown for %s: %s", session_id, exc)
+            self._active_sessions.pop(session_id, None)
 
-interview_manager = InterviewConnectionManager(create_interview_workflow())
+        app_logger.info("Graceful shutdown completed for instance %s", self.instance_id)
