@@ -20,6 +20,7 @@ services:
       - "${POSTGRES_PUBLISHED_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_NAME:-user_management}"]
       interval: 5s
@@ -174,7 +175,6 @@ services:
     build:
       context: .
       dockerfile: interview-service/Dockerfile
-    hostname: interview-service
     restart: unless-stopped
     init: true
     logging: *default-logging
@@ -184,17 +184,30 @@ services:
     environment:
       MONGODB_HOST: mongodb
       PUBLIC_KEY: ${PUBLIC_KEY}
+      POSTGRES_CHECKPOINT_HOST: postgres
+      POSTGRES_CHECKPOINT_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_CHECKPOINT_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_CHECKPOINT_NAME: interview
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_USER: ${REDIS_USER:-app}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
+      INSTANCE_ID: ${HOSTNAME}
     expose:
       - "8001"
     depends_on:
       mongodb:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
     networks:
       - backend
 
