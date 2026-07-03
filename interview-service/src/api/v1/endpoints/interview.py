@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from jwt_handler.value_objects import AccessTokenPayload
 
+from src.api.dependencies.interview import InterviewManagerDep
 from src.api.dependencies.mongo import get_cv_analysis_repository
 from src.api.security import verify_ws_token
-from src.api.v1.managers.interview_manager import interview_manager
 from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
 from src.domain.interfaces.mongo import IMongoRepository
 from src.domain.models.user_profile import UserProfile
@@ -29,6 +29,7 @@ def get_cv_data_resolver(
 async def websocket_endpoint(
     websocket: WebSocket,
     user_id: UUID,
+    interview_manager: InterviewManagerDep,
     _: Annotated[AccessTokenPayload, Depends(verify_ws_token)],
     cv_data_resolver: Annotated[CVDataResolver, Depends(get_cv_data_resolver)],
 ) -> None:
@@ -51,13 +52,19 @@ async def websocket_endpoint(
         await websocket.close(code=CV_NOT_READY_CLOSE_CODE)
         return
 
-    await interview_manager.start_interview(websocket, user, resolution.cv_data)
+    session_id = await interview_manager.start_interview(
+        websocket,
+        user,
+        resolution.cv_data,
+        cv_correlation_id=resolution.correlation_id,
+    )
 
     await websocket.send_text(
         json.dumps(
             {
                 "type": "interview_started",
                 "user_id": user_id_str,
+                "session_id": session_id,
                 "cv_source": resolution.source,
                 "correlation_id": resolution.correlation_id,
             }
@@ -74,25 +81,25 @@ async def websocket_endpoint(
             if message_type == "user_message":
                 content = message_data.get("content", "")
                 if content:
-                    await interview_manager.handle_user_message(user_id_str, content)
+                    await interview_manager.handle_user_message(session_id, content)
                 else:
                     await websocket.send_text(json.dumps({"type": "error", "message": "Message content is required"}))
 
             elif message_type == "end_interview":
-                await interview_manager.end_interview(user_id_str)
+                await interview_manager.end_interview(session_id)
                 break
 
             elif message_type == "get_status":
-                status = interview_manager.get_interview_status(user_id_str)
-                if status:
-                    await websocket.send_text(json.dumps({"type": "interview_status", "status": status}))
+                status_payload = interview_manager.get_interview_status(session_id)
+                if status_payload:
+                    await websocket.send_text(json.dumps({"type": "interview_status", "status": status_payload}))
 
             else:
                 content = message_data.get("content", data)
-                await interview_manager.handle_user_message(user_id_str, content)
+                await interview_manager.handle_user_message(session_id, content)
 
     except WebSocketDisconnect:
-        app_logger.info(f"WebSocket disconnected for interview {user_id_str}")
-        interview_manager.disconnect_user(user_id_str)
+        app_logger.info("WebSocket disconnected for interview session %s", session_id)
+        await interview_manager.disconnect_user(session_id)
 
     await websocket.close()

@@ -1,13 +1,14 @@
 import json
 
 from langchain_core.prompts import ChatPromptTemplate
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 
 from src.agent.llm import llm
 from src.agent.prompts.question_router_decision import QUESTION_ROUTER_DECISION_PROMPT
 from src.agent.state.evaluate_answer import evaluate_answer_node
+from src.agent.state.generate_report import generate_report_node
 from src.agent.state.greeting import greeting_node
 from src.agent.state.hard_question import ask_hard_question_node
 from src.agent.state.question_router import question_router_node
@@ -22,6 +23,9 @@ from src.domain.value_objects.interview_stage import IntermediateInterviewStage,
 def section_router(state: InterviewState) -> str:
     if state["overall_stage"] == OverallInterviewStage.WRAP_UP:
         return "wrap_up"
+
+    if state["overall_stage"] == OverallInterviewStage.COMPLETED:
+        return END
 
     if state["intermediate_stage"] == IntermediateInterviewStage.QUESTION:
         return "evaluate_answer"
@@ -39,6 +43,9 @@ def section_router(state: InterviewState) -> str:
 
 
 async def question_router_decision(state: InterviewState) -> str:
+    if state["overall_stage"] == OverallInterviewStage.WRAP_UP:
+        return "wrap_up"
+
     stage = state.get("overall_stage")
 
     prompt = ChatPromptTemplate.from_template(QUESTION_ROUTER_DECISION_PROMPT)
@@ -65,7 +72,7 @@ async def question_router_decision(state: InterviewState) -> str:
     return "small_talk"
 
 
-def create_interview_workflow():
+def create_interview_workflow(checkpointer: BaseCheckpointSaver):
     graph_builder = StateGraph(InterviewState)
 
     graph_builder.add_node("greeting", greeting_node)
@@ -73,6 +80,7 @@ def create_interview_workflow():
     graph_builder.add_node("ask_hard_question", ask_hard_question_node)
     graph_builder.add_node("small_talk", small_talk_node)
     graph_builder.add_node("wrap_up", wrap_up_node)
+    graph_builder.add_node("generate_report", generate_report_node)
     graph_builder.add_node("question_router", question_router_node)
     graph_builder.add_node("evaluate_answer", evaluate_answer_node)
 
@@ -84,6 +92,7 @@ def create_interview_workflow():
             "question_router": "question_router",
             "wrap_up": "wrap_up",
             "evaluate_answer": "evaluate_answer",
+            END: END,
         },
     )
 
@@ -102,9 +111,8 @@ def create_interview_workflow():
     graph_builder.add_edge("greeting", "__end__")
     graph_builder.add_edge("ask_hard_question", "__end__")
     graph_builder.add_edge("small_talk", "__end__")
-    graph_builder.add_edge("wrap_up", "__end__")
     graph_builder.add_edge("ask_soft_question", "__end__")
+    graph_builder.add_edge("wrap_up", "generate_report")
+    graph_builder.add_edge("generate_report", "__end__")
 
-    graph = graph_builder.compile(checkpointer=MemorySaver())
-
-    return graph
+    return graph_builder.compile(checkpointer=checkpointer)

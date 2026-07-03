@@ -33,6 +33,7 @@ class MongoSettings(BaseSettings):
     db_name: str = "ai_interview"
     cv_analysis_collection_name: str = "cv_analysis"
     cv_user_id_field: str = "user_id"
+    interview_sessions_collection_name: str = "interview_sessions"
 
     @property
     def url(self) -> str:
@@ -48,6 +49,37 @@ class JWTSettings(BaseSettings):
     public_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+
+class PostgresCheckpointSettings(BaseSettings):
+    user: str = "postgres"
+    host: str = "postgres"
+    port: int = 5432
+    name: str = "interview"
+    password: str = "postgres"
+
+    @property
+    def url(self) -> str:
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+
+    model_config = SettingsConfigDict(env_prefix="POSTGRES_CHECKPOINT_", env_file=".env", extra="ignore")
+
+
+class RedisSettings(BaseSettings):
+    host: str = "redis"
+    port: int = 6379
+    password: str = "redis"
+    user: str = "app"
+    decode_responses: bool = True
+    session_ttl_seconds: int = 7200
+
+    model_config = SettingsConfigDict(env_prefix="REDIS_", env_file=".env", extra="ignore")
+
+
+class InstanceSettings(BaseSettings):
+    id: str = ""
+
+    model_config = SettingsConfigDict(env_prefix="INSTANCE_", env_file=".env", extra="ignore")
 
 
 class AppSettings(BaseSettings):
@@ -100,6 +132,10 @@ class Settings(BaseSettings):
     app_settings: AppSettings = AppSettings()
     mongo_settings: MongoSettings = MongoSettings()
     jwt_settings: JWTSettings = JWTSettings()
+    postgres_checkpoint_settings: PostgresCheckpointSettings = PostgresCheckpointSettings()
+    redis_settings: RedisSettings = RedisSettings()
+    instance_settings: InstanceSettings = InstanceSettings()
+    graceful_shutdown_timeout_seconds: int = 30
 
     model_config = SettingsConfigDict(
         env_file=".env",
