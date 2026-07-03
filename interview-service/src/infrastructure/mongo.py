@@ -26,9 +26,17 @@ class MongoRepository(IMongoRepository):
     async def find_one(self, id: str) -> dict[str, Any] | None:
         return await self.collection.find_one({"_id": ObjectId(id)})
 
-    async def find_latest_by_field(self, field_name: str, field_value: str) -> dict[str, Any] | None:
+    async def find_latest_by_field(
+        self,
+        field_name: str,
+        field_value: str,
+        extra_filter: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        query: dict[str, Any] = {field_name: field_value}
+        if extra_filter:
+            query.update(extra_filter)
         return await self.collection.find_one(
-            {field_name: field_value},
+            query,
             sort=[("published_at", -1)],
         )
 
