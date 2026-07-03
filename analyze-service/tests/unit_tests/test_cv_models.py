@@ -12,9 +12,6 @@ from shared_models.messaging.cv_analysis import (
     CVAnalysisResultMessage,
 )
 
-from src.domain.services.skill_normalizer import SkillNormalizer
-
-
 class TestCVAnalysisJobMessage:
     def test_accepts_legacy_url_field(self) -> None:
         message = CVAnalysisJobMessage.model_validate(
@@ -64,8 +61,7 @@ class TestCVData:
             }
         )
 
-        normalized = SkillNormalizer().normalize(cv_data.skills)
-        assert [skill.name for skill in normalized] == ["Python", "PostgreSQL", "Kubernetes"]
+        assert [skill.name for skill in cv_data.skills] == ["Python", "postgres", "K8S"]
 
     def test_accepts_structured_skills(self) -> None:
         cv_data = CVData.model_validate(
@@ -82,20 +78,6 @@ class TestCVData:
             SkillItem(name="LangChain", category="tool"),
             SkillItem(name="FastAPI", category="framework"),
         ]
-
-
-class TestSkillNormalizer:
-    def test_deduplicates_normalized_names(self) -> None:
-        normalizer = SkillNormalizer()
-        result = normalizer.normalize(
-            [
-                SkillItem(name="postgres"),
-                SkillItem(name="PostgreSQL", category="database"),
-                SkillItem(name="Python"),
-            ]
-        )
-
-        assert [skill.name for skill in result] == ["PostgreSQL", "Python"]
 
 
 class TestCVAnalysisDocument:

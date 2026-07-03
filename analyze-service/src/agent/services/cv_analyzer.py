@@ -7,7 +7,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.agent.errors.cv_parser import CVParserException, ModelOutputParsingException
 from src.agent.interfaces.cv_analyzer import ICVAnalyzer
 from src.agent.prompts.cv_parser import SYSTEM_CV_PARSER_PROMPT
-from src.domain.services.skill_normalizer import SkillNormalizer
 from shared_models.cv.cv_data import CVData
 
 
@@ -36,6 +35,4 @@ class CVAnalyzer(ICVAnalyzer):
             self.logger.error(f"An unexpected error occurred during CV parsing: {exc}")
             raise CVParserException("An unexpected error occurred") from exc
 
-        if cv_data.skills is not None:
-            cv_data = cv_data.model_copy(update={"skills": SkillNormalizer().normalize(cv_data.skills)})
         return cv_data

@@ -1,5 +1,3 @@
-"""CV analysis error hierarchy with stable error codes for result messages."""
-
 from __future__ import annotations
 
 
