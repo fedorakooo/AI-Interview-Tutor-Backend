@@ -38,9 +38,7 @@ class CVData(BaseModel):
 
     @field_validator("skills", mode="before")
     @classmethod
-    def _coerce_legacy_skills(
-        cls, value: list[SkillItem | str | dict[str, str | None]] | None
-    ) -> list[SkillItem] | None:
+    def _coerce_legacy_skills(cls, value: list[SkillItem | str | dict[str, str | None]] | None) -> list[SkillItem] | None:
         if value is None:
             return None
 

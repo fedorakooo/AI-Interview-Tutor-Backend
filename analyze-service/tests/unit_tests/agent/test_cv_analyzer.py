@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.exceptions import OutputParserException
 from shared_models.cv.cv_data import CVData
-
 from src.agent.errors.cv_parser import ModelOutputParsingException
 from src.agent.services.cv_analyzer import CVAnalyzer
 

@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aio_pika import DeliveryMode, IncomingMessage
+
 from shared_models.messaging.retry_policy import (
     BASE_RETRY_DELAY_SECONDS,
     DLQ_ALERT_MARKER,

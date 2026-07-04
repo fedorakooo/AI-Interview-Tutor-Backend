@@ -2,7 +2,6 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from src.adapters.outbound.pdf_loader import DoclingPDFLoader
 
 
