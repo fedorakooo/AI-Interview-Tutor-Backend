@@ -1,6 +1,5 @@
 import aioboto3
 from botocore.config import Config
-
 from src.domain.interfaces.storage.s3_client import IS3Client
 
 
