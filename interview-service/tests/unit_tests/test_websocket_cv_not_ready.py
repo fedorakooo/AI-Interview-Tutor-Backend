@@ -1,11 +1,9 @@
 from unittest.mock import AsyncMock
-from uuid import UUID
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jwt_handler.handlers import JWTTokenHandler
-
 from src.api.dependencies.auth import get_token_handler
 from src.api.dependencies.interview import get_interview_manager
 from src.api.v1.endpoints.interview import CV_NOT_READY_CLOSE_CODE, get_cv_data_resolver, router

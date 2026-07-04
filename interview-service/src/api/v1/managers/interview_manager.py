@@ -2,6 +2,7 @@ import json
 import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 from fastapi import WebSocket
@@ -108,7 +109,7 @@ class InterviewConnectionManager:
             app_logger.error("Checkpoint missing for session %s", session_id)
             return
 
-        state = dict(snapshot.values)
+        state = cast(InterviewState, dict(snapshot.values))
         state["messages"].append((ConversationRole.USER, message))
         await self._process_interview_step(session_id, state)
 
