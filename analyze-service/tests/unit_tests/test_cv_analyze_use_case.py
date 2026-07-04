@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from shared_models.cv.cv_data import CVData
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
-
 from src.agent.errors.cv_parser import ModelOutputParsingException
 from src.domain.errors.cv_analysis import ExtractionQualityError, LLMParseError, LLMRateLimitError, S3DownloadError
 from src.domain.models.pdf_extraction_result import PDFExtractionResult

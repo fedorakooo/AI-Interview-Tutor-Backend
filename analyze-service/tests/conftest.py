@@ -25,4 +25,3 @@ def job_message() -> CVAnalysisJobMessage:
         s3_object_key="cvs/user/resume.pdf",
         published_at=datetime.now(UTC),
     )
-

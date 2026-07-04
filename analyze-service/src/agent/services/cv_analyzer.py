@@ -3,11 +3,11 @@ from logging import Logger
 from langchain_core.exceptions import OutputParserException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
+from shared_models.cv.cv_data import CVData
 
 from src.agent.errors.cv_parser import CVParserException, ModelOutputParsingException
 from src.agent.interfaces.cv_analyzer import ICVAnalyzer
 from src.agent.prompts.cv_parser import SYSTEM_CV_PARSER_PROMPT
-from shared_models.cv.cv_data import CVData
 
 
 class CVAnalyzer(ICVAnalyzer):
