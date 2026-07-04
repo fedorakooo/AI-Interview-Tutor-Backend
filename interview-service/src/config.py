@@ -82,6 +82,20 @@ class InstanceSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="INSTANCE_", env_file=".env", extra="ignore")
 
 
+class RabbitMQSettings(BaseSettings):
+    host: str = "rabbitmq"
+    port: int = 5672
+    user: str = "guest"
+    password: str = "guest"
+    interview_completed_queue_name: str = "interview-completed-stream"
+
+    @property
+    def url(self) -> str:
+        return f"amqp://{self.user}:{self.password}@{self.host}:{self.port}/"
+
+    model_config = SettingsConfigDict(env_prefix="RABBITMQ_", env_file=".env", extra="ignore")
+
+
 class AppSettings(BaseSettings):
     port: int = 8001
 
@@ -134,6 +148,7 @@ class Settings(BaseSettings):
     jwt_settings: JWTSettings = JWTSettings()
     postgres_checkpoint_settings: PostgresCheckpointSettings = PostgresCheckpointSettings()
     redis_settings: RedisSettings = RedisSettings()
+    rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     instance_settings: InstanceSettings = InstanceSettings()
     graceful_shutdown_timeout_seconds: int = 30
 

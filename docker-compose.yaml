@@ -183,6 +183,7 @@ services:
         required: false
     environment:
       MONGODB_HOST: mongodb
+      RABBITMQ_HOST: rabbitmq
       PUBLIC_KEY: ${PUBLIC_KEY}
       POSTGRES_CHECKPOINT_HOST: postgres
       POSTGRES_CHECKPOINT_USER: ${POSTGRES_USER:-postgres}
@@ -201,6 +202,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health/ready"]
@@ -263,6 +266,39 @@ services:
     networks:
       - backend
 
+  practice-service:
+    build:
+      context: .
+      dockerfile: practice-service/Dockerfile
+    hostname: practice-service
+    restart: unless-stopped
+    init: true
+    logging: *default-logging
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      MONGODB_HOST: mongodb
+      RABBITMQ_HOST: rabbitmq
+      PUBLIC_KEY: ${PUBLIC_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      PRACTICE_LLM_TEMPERATURE: ${PRACTICE_LLM_TEMPERATURE:-0.5}
+    expose:
+      - "8000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend
+
   nginx:
     image: nginx:1.27-alpine
     hostname: nginx
@@ -278,6 +314,8 @@ services:
       user-management:
         condition: service_started
       interview-service:
+        condition: service_healthy
+      practice-service:
         condition: service_healthy
     networks:
       - backend
