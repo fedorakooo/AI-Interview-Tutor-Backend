@@ -31,3 +31,9 @@ repos:
         files: ^interview-service/
         additional_dependencies: [ types-PyYAML ]
         language_version: python3.12
+
+      - id: mypy
+        name: mypy-practice-service
+        files: ^practice-service/
+        additional_dependencies: [ types-PyYAML ]
+        language_version: python3.12
