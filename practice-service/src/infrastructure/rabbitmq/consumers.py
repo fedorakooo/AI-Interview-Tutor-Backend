@@ -62,10 +62,9 @@ class PracticeConsumers:
 
     async def _run(self) -> None:
         wait_for_rabbitmq()
-        connection = await connect_robust(settings.rabbitmq_settings.url)
-        self._connection = connection
-        async with connection:
-            channel = await connection.channel()
+        self._connection = await connect_robust(settings.rabbitmq_settings.url)
+        async with self._connection:
+            channel = await self._connection.channel()
             await channel.set_qos(prefetch_count=3)
 
             plan_dlq = await channel.declare_queue(

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import mongomock_motor
 import pytest_asyncio
@@ -11,8 +11,8 @@ from src.agent.answer_grader import AnswerGrader
 from src.api.dependencies.auth import get_token_handler
 from src.api.v1.router import router
 from src.app.container import build_container
-from src.config import settings
 from tests.conftest import PRIVATE_KEY, PUBLIC_KEY
+from tests.fixtures.plan_fixtures import sample_plan_draft
 
 
 @dataclass
@@ -21,9 +21,6 @@ class MockPublisher:
 
     async def publish(self, queue_name: str, message: str) -> None:
         self.published.append((queue_name, message))
-
-
-from tests.fixtures.plan_fixtures import sample_plan_draft
 
 
 @pytest_asyncio.fixture

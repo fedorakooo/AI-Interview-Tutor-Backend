@@ -4,15 +4,18 @@ from uuid import uuid4
 
 import pytest
 from pymongo.errors import DuplicateKeyError
-from shared_models.interview.report import InterviewReport, SkillScore
-from shared_models.practice.exercise import Choice, Exercise, ExerciseType, FlashcardRating
+from shared_models.interview.report import InterviewReport
+from shared_models.practice.exercise import ExerciseType, FlashcardRating
 from shared_models.practice.messaging import InterviewCompletedEvent, PlanGenerationRequest, PracticePlanJobMessage
 from shared_models.practice.plan import PlanContextSnapshot, PlanSource, PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.agent.answer_grader import AnswerGrader
-from src.application.services.plan_context_builder import PlanContextBuilder
 from src.application.services.practice_services import BuiltPlanContext, ExerciseValidator
-from src.application.use_cases.worker_use_cases import GeneratePlanUseCase, HandleInterviewCompletedUseCase, SubmitAttemptUseCase
+from src.application.use_cases.worker_use_cases import (
+    GeneratePlanUseCase,
+    HandleInterviewCompletedUseCase,
+    SubmitAttemptUseCase,
+)
 from src.domain.exceptions.practice_errors import AlreadyAttemptedError, PlanGenerationFailedError, PlanNotReadyError
 from src.infrastructure.mongo.repositories import ProfileRepository
 from tests.fixtures.plan_fixtures import sample_plan_draft
