@@ -4,7 +4,6 @@ import pytest
 from fastapi import WebSocketException
 from jwt_handler.handlers import JWTTokenHandler
 from jwt_handler.value_objects import AccessTokenPayload, TokenType
-
 from src.api.security import verify_ws_token
 
 

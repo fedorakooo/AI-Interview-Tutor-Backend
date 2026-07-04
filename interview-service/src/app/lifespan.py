@@ -3,14 +3,13 @@ from uuid import uuid4
 
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
-
 from src.agent.workflow import create_interview_workflow
 from src.api.v1.managers.interview_manager import InterviewConnectionManager
 from src.config import settings
 from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.postgres.checkpointer import create_checkpointer
-from src.infrastructure.rabbitmq.interview_completed_producer import InterviewCompletedProducer
 from src.infrastructure.postgres.pool import create_postgres_pool
+from src.infrastructure.rabbitmq.interview_completed_producer import InterviewCompletedProducer
 from src.infrastructure.redis.client import create_redis_client
 from src.infrastructure.redis.session_registry import RedisSessionRegistry
 from src.logger import app_logger
