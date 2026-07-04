@@ -237,3 +237,37 @@ class TestPlanContextBuilder:
         built = await builder.build(str(profile.user_id), PlanGenerationRequest(), profile)
         assert built.focus_skills.count("Python") == 1
         assert built.source == PlanSource.COMBINED.value
+
+    @pytest.mark.asyncio
+    async def test_uses_event_session_over_latest_interview(self) -> None:
+        reader = AsyncMock()
+        reader.get_latest_cv = AsyncMock(return_value=None)
+        older_report = InterviewReport(summary="Older", weaknesses=["Old weakness"])
+        newer_report = InterviewReport(summary="Newer", weaknesses=["New weakness"])
+        reader.get_latest_interview = AsyncMock(
+            return_value=InterviewContextData(
+                session_id="newer-session",
+                cv_correlation_id=None,
+                report=newer_report,
+            )
+        )
+        reader.get_interview_by_session = AsyncMock(
+            return_value=InterviewContextData(
+                session_id="event-session",
+                cv_correlation_id=None,
+                report=older_report,
+            )
+        )
+        builder = PlanContextBuilder(reader)
+        profile = UserPracticeProfile(user_id=uuid4(), updated_at=datetime.now(UTC))
+        built = await builder.build(
+            str(profile.user_id),
+            PlanGenerationRequest(),
+            profile,
+            interview_session_id="event-session",
+        )
+        assert "Old weakness" in built.focus_skills
+        assert "New weakness" not in built.focus_skills
+        assert built.interview_session_id == "event-session"
+        reader.get_interview_by_session.assert_awaited_once_with("event-session")
+        reader.get_latest_interview.assert_not_called()
