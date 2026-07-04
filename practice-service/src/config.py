@@ -81,6 +81,7 @@ class PracticeSettings(BaseSettings):
     llm_timeout_seconds: int = 60
     grading_timeout_seconds: int = 30
     max_generation_retries: int = 2
+    interview_report_retry_seconds: float = 2.0
     supported_exercise_types: list[str] = Field(
         default_factory=lambda: ["mcq_single", "mcq_multi", "open_question", "flashcard"]
     )

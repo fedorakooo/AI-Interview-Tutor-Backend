@@ -28,6 +28,10 @@ class IPlanRepository(Protocol):
         """Apply partial updates to a plan document."""
         pass
 
+    async def try_claim_plan_generation(self, plan_id: str) -> PracticePlan | None:
+        """Atomically transition pending → generating; return plan if claimed."""
+        pass
+
     async def list_plans(
         self,
         user_id: str,
