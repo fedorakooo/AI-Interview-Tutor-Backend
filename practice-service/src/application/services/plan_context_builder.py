@@ -1,3 +1,4 @@
+
 from shared_models.interview.report import SkillScore
 from shared_models.practice.exercise import ExerciseType
 from shared_models.practice.messaging import PlanGenerationRequest

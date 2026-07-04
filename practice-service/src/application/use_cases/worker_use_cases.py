@@ -1,8 +1,10 @@
 import asyncio
+
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from pymongo.errors import DuplicateKeyError
+
 from shared_models.practice.attempt import AttemptStatus, ExerciseAttempt
 from shared_models.practice.exercise import ExerciseType, FlashcardRating
 from shared_models.practice.messaging import PlanGenerationRequest, PlanSource, PracticePlanJobMessage

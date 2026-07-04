@@ -3,10 +3,10 @@ from uuid import UUID
 import pytest
 from jwt_handler.value_objects import AccessTokenPayload, TokenType
 from sqlalchemy import update
-
 from src.api.dependencies.auth import get_token_handler
 from src.domain.value_objects.user_role import UserRole
 from src.infrastructure.postgres.schemas.user import UserORM
+
 from tests.integration_tests.test_db import engine
 
 
