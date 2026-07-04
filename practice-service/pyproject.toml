@@ -22,8 +22,7 @@ shared-models = { path = "../libs/shared_models", develop = true }
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
 pytest-asyncio = "^1.2.0"
-    mongomock-motor = "^0.0.35"
-    httpx = "^0.28.1"
+pytest-mock = "^3.14.1"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
