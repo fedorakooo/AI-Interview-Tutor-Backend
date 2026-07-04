@@ -14,7 +14,9 @@ class DoclingPDFLoader(IPDFLoader):
     def __init__(self, do_ocr: bool = True, do_table_structure: bool = True) -> None:
         options = PdfPipelineOptions(do_ocr=do_ocr, do_table_structure=do_table_structure)
         options.table_structure_options.mode = TableFormerMode.ACCURATE
-        self._converter = DocumentConverter(format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)})
+        self._converter = DocumentConverter(
+            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
+        )
 
     def load(self, pdf_bytes: BytesIO) -> str:
         return self.load_with_metadata(pdf_bytes).text

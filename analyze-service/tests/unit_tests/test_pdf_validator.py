@@ -1,4 +1,5 @@
 import pytest
+
 from src.domain.errors.cv_analysis import (
     EmptyPDFError,
     ExtractionQualityError,

@@ -7,6 +7,7 @@ from aio_pika import IncomingMessage
 from pydantic import ValidationError
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
 from shared_models.messaging.retry_policy import MessageRetryPolicy
+
 from src.adapters.inbound.rabbitmq_consumer import RabbitMQConsumer
 from src.domain.errors.cv_analysis import ExtractionQualityError, S3DownloadError
 
