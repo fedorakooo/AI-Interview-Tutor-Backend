@@ -13,6 +13,9 @@ class LLMFactory:
                 return settings.openrouter_llm.temperature
             case LLMProvider.GOOGLE:
                 return settings.google_llm.temperature
+            case _:
+                valid = ", ".join(provider.value for provider in LLMProvider)
+                raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Valid values: {valid}")
 
     @staticmethod
     def create_llm(*, temperature: float | None = None) -> BaseChatModel:

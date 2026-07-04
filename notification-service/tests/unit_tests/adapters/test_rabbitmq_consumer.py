@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aio_pika import IncomingMessage
 from shared_models.messaging.retry_policy import MessageRetryPolicy
+
 from src.adapters.inbound.rabbitmq_consumer import RabbitMQConsumer
 from src.application.use_cases.reset_password_use_case import ResetPasswordUseCase
 from src.domain.exceptions.not_sent_error import NotSentError

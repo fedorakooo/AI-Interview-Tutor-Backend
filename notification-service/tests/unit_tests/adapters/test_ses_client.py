@@ -2,6 +2,7 @@ import logging
 from unittest.mock import MagicMock
 
 from botocore.exceptions import ClientError
+
 from src.adapters.outbound.ses_client import SESClient
 
 
