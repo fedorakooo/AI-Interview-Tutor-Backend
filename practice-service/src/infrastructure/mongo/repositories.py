@@ -2,6 +2,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
+from pymongo import ReturnDocument
 from shared_models.practice.plan import PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.config import settings
@@ -45,6 +46,15 @@ class PlanRepository:
     async def update_plan(self, plan_id: str, update_data: dict[str, Any]) -> bool:
         result = await self._collection.update_one({"plan_id": plan_id}, {"$set": update_data})
         return result.modified_count > 0 or result.matched_count > 0
+
+    async def try_claim_plan_generation(self, plan_id: str) -> PracticePlan | None:
+        now = datetime.now(UTC)
+        document = await self._collection.find_one_and_update(
+            {"plan_id": plan_id, "status": PlanStatus.PENDING.value},
+            {"$set": {"status": PlanStatus.GENERATING.value, "updated_at": now.isoformat()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        return self._from_document(document) if document else None
 
     async def list_plans(
         self,

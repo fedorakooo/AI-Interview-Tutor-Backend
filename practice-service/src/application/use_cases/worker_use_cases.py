@@ -1,6 +1,8 @@
+import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from pymongo.errors import DuplicateKeyError
 from shared_models.practice.attempt import AttemptStatus, ExerciseAttempt
 from shared_models.practice.exercise import ExerciseType, FlashcardRating
 from shared_models.practice.messaging import PlanGenerationRequest, PlanSource, PracticePlanJobMessage
@@ -31,16 +33,12 @@ class GeneratePlanUseCase:
         context_builder: PlanContextBuilder,
         plan_generator: PlanGenerator,
         validator: ExerciseValidator,
-        publisher: IMessagePublisher | None = None,
-        ready_queue_name: str | None = None,
     ) -> None:
         self._plans = plan_repository
         self._profiles = profile_repository
         self._context_builder = context_builder
         self._plan_generator = plan_generator
         self._validator = validator
-        self._publisher = publisher
-        self._ready_queue_name = ready_queue_name
 
     async def execute(self, message: PracticePlanJobMessage) -> None:
         plan = await self._plans.get_plan_by_id(str(message.plan_id))
@@ -55,18 +53,25 @@ class GeneratePlanUseCase:
             )
             return
 
-        now = datetime.now(UTC)
-        await self._plans.update_plan(
-            str(message.plan_id),
-            {"status": PlanStatus.GENERATING.value, "updated_at": now.isoformat()},
-        )
+        claimed = await self._plans.try_claim_plan_generation(str(message.plan_id))
+        if claimed is None:
+            app_logger.info(
+                "Skipping plan generation for %s: could not claim pending status",
+                message.plan_id,
+            )
+            return
 
         profile = await self._profiles.get_profile(str(message.user_id))
         if profile is None:
             profile = self._profiles.default_profile(message.user_id)
             await self._profiles.upsert_profile(profile)
 
-        built = await self._context_builder.build(str(message.user_id), message.request, profile)
+        built = await self._context_builder.build(
+            str(message.user_id),
+            message.request,
+            profile,
+            interview_session_id=message.interview_session_id,
+        )
         await self._plans.update_plan(
             str(message.plan_id),
             {"context_snapshot": built.context_snapshot.model_dump(mode="json")},
@@ -127,11 +132,15 @@ class HandleInterviewCompletedUseCase:
         self._plan_queue_name = plan_queue_name
 
     async def execute(self, event) -> bool:
+        # Interview-triggered auto-plans do not consume daily_plan_quota (post-interview UX).
         existing = await self._plans.get_plan_by_interview_session(event.session_id)
         if existing is not None:
             return False
 
         interview = await self._context_reader.get_interview_by_session(event.session_id)
+        if interview is None:
+            await asyncio.sleep(settings.practice_settings.interview_report_retry_seconds)
+            interview = await self._context_reader.get_interview_by_session(event.session_id)
         if interview is None:
             app_logger.warning("Interview report not found for session %s", event.session_id)
             return False
@@ -153,7 +162,12 @@ class HandleInterviewCompletedUseCase:
             include_interview_context=True,
             include_cv_context=True,
         )
-        built = await self._context_builder.build(str(event.user_id), request, profile)
+        built = await self._context_builder.build(
+            str(event.user_id),
+            request,
+            profile,
+            interview_session_id=event.session_id,
+        )
 
         now = datetime.now(UTC)
         plan = PracticePlan(
@@ -170,7 +184,11 @@ class HandleInterviewCompletedUseCase:
             created_at=now,
             updated_at=now,
         )
-        await self._plans.create_plan(plan)
+        try:
+            await self._plans.create_plan(plan)
+        except DuplicateKeyError:
+            app_logger.info("Plan already exists for interview session %s", event.session_id)
+            return False
 
         message = PracticePlanJobMessage(
             job_id=uuid4(),
