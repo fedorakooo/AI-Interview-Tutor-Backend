@@ -6,7 +6,6 @@ import pytest
 from fastapi import WebSocket
 from shared_models.cv.cv_data import CVData
 from shared_models.interview.session import InterviewSessionStatus
-
 from src.api.v1.managers.interview_manager import (
     SERVER_SHUTDOWN_CLOSE_CODE,
     ActiveSession,
@@ -16,11 +15,17 @@ from src.domain.models.user_profile import UserProfile
 
 
 @pytest.fixture
-def interview_manager() -> InterviewConnectionManager:
+def interview_mocks() -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+    return AsyncMock(), AsyncMock(), AsyncMock()
+
+
+@pytest.fixture
+def interview_manager(interview_mocks: tuple[AsyncMock, AsyncMock, AsyncMock]) -> InterviewConnectionManager:
+    interview_workflow, session_registry, session_repository = interview_mocks
     return InterviewConnectionManager(
-        interview_workflow=AsyncMock(),
-        session_registry=AsyncMock(),
-        session_repository=AsyncMock(),
+        interview_workflow=interview_workflow,
+        session_registry=session_registry,
+        session_repository=session_repository,
         instance_id="test-instance",
     )
 
@@ -54,7 +59,11 @@ async def test_rejects_new_connections_during_shutdown(
 
 
 @pytest.mark.asyncio
-async def test_shutdown_suspends_active_sessions(interview_manager: InterviewConnectionManager) -> None:
+async def test_shutdown_suspends_active_sessions(
+    interview_manager: InterviewConnectionManager,
+    interview_mocks: tuple[AsyncMock, AsyncMock, AsyncMock],
+) -> None:
+    interview_workflow, session_registry, session_repository = interview_mocks
     session_id = str(uuid4())
     user_id = str(uuid4())
     websocket = AsyncMock(spec=WebSocket)
@@ -70,14 +79,14 @@ async def test_shutdown_suspends_active_sessions(interview_manager: InterviewCon
 
     snapshot = MagicMock()
     snapshot.values = {"overall_stage": "GREETING", "messages": ["hello"]}
-    interview_manager.interview_workflow.aget_state.return_value = snapshot
+    interview_workflow.aget_state.return_value = snapshot
 
     await interview_manager.shutdown()
 
-    interview_manager.session_repository.update_session.assert_awaited_once()
-    update_kwargs = interview_manager.session_repository.update_session.await_args.kwargs
+    session_repository.update_session.assert_awaited_once()
+    update_kwargs = session_repository.update_session.await_args.kwargs
     assert update_kwargs["status"] == InterviewSessionStatus.SUSPENDED
-    interview_manager.session_registry.unregister_session.assert_awaited_once_with(session_id, user_id)
+    session_registry.unregister_session.assert_awaited_once_with(session_id, user_id)
     websocket.close.assert_awaited_once_with(code=SERVER_SHUTDOWN_CLOSE_CODE)
     assert session_id not in interview_manager._active_sessions
     assert interview_manager.accepting_connections is False
