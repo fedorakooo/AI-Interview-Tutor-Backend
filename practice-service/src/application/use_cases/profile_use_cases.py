@@ -2,7 +2,8 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from shared_models.practice.profile import DevelopmentGoal, UserPracticeProfile
-from src.domain.exceptions.practice_errors import PracticeServiceError
+from src.config import settings
+from src.domain.exceptions.practice_errors import PracticeServiceError, UnsupportedExerciseTypeError
 
 
 class GetProfileUseCase:
@@ -34,7 +35,11 @@ class UpdateProfileUseCase:
         if update_data.get("preferred_difficulty") is not None:
             profile.preferred_difficulty = update_data["preferred_difficulty"]
         if update_data.get("preferred_exercise_types") is not None:
-            profile.preferred_exercise_types = update_data["preferred_exercise_types"]
+            exercise_types = update_data["preferred_exercise_types"]
+            for exercise_type in exercise_types:
+                if exercise_type.value not in settings.practice_settings.supported_exercise_types:
+                    raise UnsupportedExerciseTypeError(exercise_type.value)
+            profile.preferred_exercise_types = exercise_types
         if update_data.get("weekly_target_minutes") is not None:
             minutes = update_data["weekly_target_minutes"]
             if not (15 <= minutes <= 600):

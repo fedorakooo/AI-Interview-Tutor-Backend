@@ -47,6 +47,14 @@ class GeneratePlanUseCase:
         if plan is None:
             raise PlanNotFoundError(f"Plan {message.plan_id} not found")
 
+        if plan.status in {PlanStatus.READY, PlanStatus.GENERATING, PlanStatus.FAILED}:
+            app_logger.info(
+                "Skipping plan generation for %s: status already %s",
+                message.plan_id,
+                plan.status.value,
+            )
+            return
+
         now = datetime.now(UTC)
         await self._plans.update_plan(
             str(message.plan_id),
