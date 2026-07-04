@@ -1,11 +1,11 @@
 import random
 
 from langchain_core.prompts import ChatPromptTemplate
-from shared_models.cv.cv_data import CVData
 
 from src.agent.llm import llm
 from src.agent.prompts.hard_question import HARD_QUESTION_PROMPT_HUMAN, HARD_QUESTION_PROMPT_SYSTEM
 from src.agent.utils.format_messages import format_messages
+from shared_models.cv.cv_data import CVData
 from src.domain.models.interview_state import InterviewState
 from src.domain.value_objects.conversation_role import ConversationRole
 from src.domain.value_objects.interview_stage import IntermediateInterviewStage

@@ -54,7 +54,10 @@ class MongoRepository(IMongoRepository):
         sort_direction: int = -1,
     ) -> list[dict[str, Any]]:
         cursor = (
-            self.collection.find({field_name: field_value}).sort(sort_field, sort_direction).skip(skip).limit(limit)
+            self.collection.find({field_name: field_value})
+            .sort(sort_field, sort_direction)
+            .skip(skip)
+            .limit(limit)
         )
         return await cursor.to_list(length=limit)
 

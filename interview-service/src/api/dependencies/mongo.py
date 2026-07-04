@@ -1,6 +1,7 @@
 from functools import lru_cache
 
 from motor.motor_asyncio import AsyncIOMotorClient
+
 from src.config import settings
 from src.domain.interfaces.mongo import IMongoRepository
 from src.infrastructure.mongo import MongoRepository

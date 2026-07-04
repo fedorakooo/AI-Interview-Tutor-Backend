@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from shared_models.interview.report import InterviewReport, SkillScore
 from shared_models.interview.session import InterviewSessionDocument, InterviewSessionStatus
 from src.infrastructure.redis.session_registry import RedisSessionRegistry

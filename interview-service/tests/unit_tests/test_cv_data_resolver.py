@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from shared_models.messaging.common import AnalysisStatus
+
 from src.agent.data.sample_data import SAMPLE_CV
 from src.config import settings
 from src.services.cv_data_resolver import CVDataResolver

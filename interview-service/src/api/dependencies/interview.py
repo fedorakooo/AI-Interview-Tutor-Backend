@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
+
 from src.api.v1.managers.interview_manager import InterviewConnectionManager
 
 
