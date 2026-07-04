@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from src.app.container import build_container
 from src.config import settings
 from src.infrastructure.mongo.client import MongoClientFactory
@@ -32,7 +32,3 @@ async def lifespan(app: FastAPI):
     await consumers.stop()
     mongo_client.close()
     app_logger.info("Practice service stopped")
-
-
-def get_container(request: Request):
-    return request.app.state.container

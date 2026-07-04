@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
+from fastapi import Request
 from src.agent.answer_grader import AnswerGrader
 from src.agent.plan_generator import PlanGenerator
 from src.application.services.plan_context_builder import PlanContextBuilder
@@ -14,6 +15,7 @@ from src.application.use_cases.plan_use_cases import (
 from src.application.use_cases.profile_use_cases import GetProfileUseCase, UpdateProfileUseCase
 from src.application.use_cases.worker_use_cases import GeneratePlanUseCase, GetProgressUseCase, SubmitAttemptUseCase
 from src.config import settings
+from src.domain.interfaces.message_publisher import IMessagePublisher
 from src.infrastructure.mongo.context_reader import ContextReader
 from src.infrastructure.mongo.repositories import AttemptRepository, PlanRepository, ProfileRepository
 from src.infrastructure.rabbitmq.publisher import RabbitMQPublisher
@@ -33,18 +35,24 @@ class AppContainer:
     mongo_client: object
 
 
-def build_container(mongo_client) -> AppContainer:
+def build_container(
+    mongo_client,
+    *,
+    publisher: IMessagePublisher | None = None,
+    plan_generator: PlanGenerator | None = None,
+    answer_grader: AnswerGrader | None = None,
+) -> tuple:
     plan_repository = PlanRepository(mongo_client)
     attempt_repository = AttemptRepository(mongo_client)
     profile_repository = ProfileRepository(mongo_client)
     context_reader = ContextReader(mongo_client)
     context_builder = PlanContextBuilder(context_reader)
-    publisher = RabbitMQPublisher(settings.rabbitmq_settings.url)
+    publisher = publisher or RabbitMQPublisher(settings.rabbitmq_settings.url)
     sanitizer = ExerciseSanitizer()
     validator = ExerciseValidator()
     quota_service = QuotaService(profile_repository)
-    plan_generator = PlanGenerator()
-    answer_grader = AnswerGrader()
+    plan_generator = plan_generator or PlanGenerator()
+    answer_grader = answer_grader or AnswerGrader()
 
     generate_plan_use_case = GeneratePlanUseCase(
         plan_repository,
@@ -100,3 +108,7 @@ def build_container(mongo_client) -> AppContainer:
 
 def get_user_id(payload) -> UUID:
     return UUID(payload["id"])
+
+
+def get_container(request: Request) -> AppContainer:
+    return request.app.state.container

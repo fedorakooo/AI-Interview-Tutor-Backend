@@ -1,3 +1,4 @@
+
 from shared_models.interview.report import SkillScore
 from shared_models.practice.exercise import ExerciseType
 from shared_models.practice.messaging import PlanGenerationRequest
@@ -19,16 +20,11 @@ class PlanContextBuilder:
         user_id: str,
         request: PlanGenerationRequest,
         profile: UserPracticeProfile,
-        *,
-        interview_session_id: str | None = None,
     ) -> BuiltPlanContext:
         cv_context = await self._context_reader.get_latest_cv(user_id) if request.include_cv_context else None
-        interview_context = None
-        if request.include_interview_context:
-            if interview_session_id:
-                interview_context = await self._context_reader.get_interview_by_session(interview_session_id)
-            else:
-                interview_context = await self._context_reader.get_latest_interview(user_id)
+        interview_context = (
+            await self._context_reader.get_latest_interview(user_id) if request.include_interview_context else None
+        )
 
         difficulty = request.difficulty or profile.preferred_difficulty
         exercise_types = request.exercise_types or profile.preferred_exercise_types
