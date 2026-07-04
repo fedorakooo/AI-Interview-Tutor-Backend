@@ -9,6 +9,7 @@ from src.api.v1.managers.interview_manager import InterviewConnectionManager
 from src.config import settings
 from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.postgres.checkpointer import create_checkpointer
+from src.infrastructure.rabbitmq.interview_completed_producer import InterviewCompletedProducer
 from src.infrastructure.postgres.pool import create_postgres_pool
 from src.infrastructure.redis.client import create_redis_client
 from src.infrastructure.redis.session_registry import RedisSessionRegistry
@@ -33,11 +34,16 @@ async def lifespan(app: FastAPI):
             collection_name=settings.mongo_settings.interview_sessions_collection_name,
         )
     )
+    interview_completed_producer = InterviewCompletedProducer(
+        amqp_url=settings.rabbitmq_settings.url,
+        queue_name=settings.rabbitmq_settings.interview_completed_queue_name,
+    )
     interview_manager = InterviewConnectionManager(
         interview_workflow=workflow,
         session_registry=session_registry,
         session_repository=session_repository,
         instance_id=instance_id,
+        interview_completed_producer=interview_completed_producer,
     )
 
     app.state.postgres_pool = postgres_pool

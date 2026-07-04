@@ -2,18 +2,20 @@ import json
 import socket
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import WebSocket
 from langgraph.graph.state import CompiledStateGraph
 from shared_models.cv.cv_data import CVData
 from shared_models.interview.report import InterviewReport
 from shared_models.interview.session import InterviewSessionStatus
+from shared_models.practice.messaging import InterviewCompletedEvent
 
 from src.domain.models.interview_state import InterviewState
 from src.domain.models.user_profile import UserProfile
 from src.domain.value_objects.conversation_role import ConversationRole
 from src.domain.value_objects.interview_stage import OverallInterviewStage
+from src.infrastructure.rabbitmq.interview_completed_producer import InterviewCompletedProducer
 from src.infrastructure.redis.session_registry import RedisSessionRegistry
 from src.logger import app_logger
 from src.repositories.interview_session_repository import InterviewSessionRepository
@@ -38,11 +40,13 @@ class InterviewConnectionManager:
         session_registry: RedisSessionRegistry,
         session_repository: InterviewSessionRepository,
         instance_id: str,
+        interview_completed_producer: InterviewCompletedProducer | None = None,
     ) -> None:
         self.interview_workflow = interview_workflow
         self.session_registry = session_registry
         self.session_repository = session_repository
         self.instance_id = instance_id
+        self.interview_completed_producer = interview_completed_producer
         self._active_sessions: dict[str, ActiveSession] = {}
         self._accepting_connections = True
         self._is_shutting_down = False
@@ -166,6 +170,7 @@ class InterviewConnectionManager:
             completed_at=datetime.now(UTC),
         )
         await self.session_registry.update_status(session_id, InterviewSessionStatus.COMPLETED)
+        await self._publish_interview_completed_event(session_id)
         await self._send_message(
             session_id,
             {
@@ -186,6 +191,31 @@ class InterviewConnectionManager:
                 },
             )
         await self._close_session(session_id)
+
+    async def _publish_interview_completed_event(self, session_id: str) -> None:
+        if self.interview_completed_producer is None:
+            return
+
+        session = self._active_sessions.get(session_id)
+        if session is None:
+            app_logger.warning("Cannot publish interview completed event: session %s not found", session_id)
+            return
+
+        event = InterviewCompletedEvent(
+            event_id=uuid4(),
+            user_id=UUID(session.user_id),
+            session_id=session_id,
+            cv_correlation_id=session.cv_correlation_id,
+            published_at=datetime.now(UTC),
+        )
+        try:
+            await self.interview_completed_producer.publish(event)
+        except Exception as exc:
+            app_logger.error(
+                "Failed to publish interview completed event for session %s: %s",
+                session_id,
+                exc,
+            )
 
     async def _close_session(self, session_id: str) -> None:
         session = self._active_sessions.pop(session_id, None)
