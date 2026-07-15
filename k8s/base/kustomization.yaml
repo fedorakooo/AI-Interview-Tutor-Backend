@@ -6,7 +6,6 @@ namespace: ai-interview-tutor
 resources:
   - namespace.yaml
   - configmaps/app-config.yaml
-  - configmaps/nginx-config.yaml
   - configmaps/postgres-init.yaml
   - configmaps/localstack-init.yaml
   - infra/postgres/service.yaml
@@ -31,3 +30,13 @@ resources:
   - apps/notification-service/deployment.yaml
   - apps/nginx/service.yaml
   - apps/nginx/deployment.yaml
+
+configMapGenerator:
+  - name: nginx-config
+    files:
+      - nginx.conf=nginx/nginx.conf
+      - default.conf=nginx/conf.d/default.conf
+      - upstreams.conf=nginx/snippets/upstreams.conf
+      - proxy-params.conf=nginx/snippets/proxy-params.conf
+      - security-headers.conf=nginx/snippets/security-headers.conf
+      - gateway-locations.conf=nginx/snippets/gateway-locations.conf
