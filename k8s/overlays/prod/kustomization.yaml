@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ingress.yaml
+
+# Replace placeholder host and issuer before applying.
+# Secrets: use external-secrets or sealed-secrets instead of dev app-secrets.yaml.
+
+patches:
+  - path: patches/nginx-service-clusterip.yaml
