@@ -9,7 +9,7 @@ async def test_login_success(test_client, sample_user_data):
     assert signup_response.status_code == 201
 
     response = await test_client.post(
-        "/api/v1/auth/login",
+        "/api/v1/auth/token",
         data={
             "username": sample_user_data["username"],
             "password": sample_user_data["password"],
@@ -26,7 +26,7 @@ async def test_login_success(test_client, sample_user_data):
 @pytest.mark.asyncio
 async def test_login_invalid_credentials(test_client):
     response = await test_client.post(
-        "/api/v1/auth/login",
+        "/api/v1/auth/token",
         data={"username": faker.user_name(), "password": faker.password()},
     )
     assert response.status_code == 401
@@ -38,7 +38,7 @@ async def test_login_invalid_username(test_client, sample_user_data):
     assert signup_response.status_code == 201
 
     response = await test_client.post(
-        "/api/v1/auth/login",
+        "/api/v1/auth/token",
         data={"username": faker.user_name(), "password": sample_user_data["password"]},
     )
     assert response.status_code == 401
@@ -50,7 +50,7 @@ async def test_login_invalid_password(test_client, sample_user_data):
     assert signup_response.status_code == 201
 
     response = await test_client.post(
-        "/api/v1/auth/login",
+        "/api/v1/auth/token",
         data={"username": sample_user_data["username"], "password": faker.password()},
     )
     assert response.status_code == 401
