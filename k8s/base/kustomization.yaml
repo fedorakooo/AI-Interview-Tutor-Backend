@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ai-interview-tutor
+
+resources:
+  - namespace.yaml
+  - configmaps/app-config.yaml
+  - configmaps/nginx-config.yaml
+  - configmaps/postgres-init.yaml
+  - configmaps/localstack-init.yaml
+  - infra/postgres/service.yaml
+  - infra/postgres/statefulset.yaml
+  - infra/redis/service.yaml
+  - infra/redis/pvc.yaml
+  - infra/redis/deployment.yaml
+  - infra/rabbitmq/service.yaml
+  - infra/rabbitmq/statefulset.yaml
+  - infra/mongodb/service.yaml
+  - infra/mongodb/statefulset.yaml
+  - infra/localstack/service.yaml
+  - infra/localstack/pvc.yaml
+  - infra/localstack/deployment.yaml
+  - apps/user-management/service.yaml
+  - apps/user-management/deployment.yaml
+  - apps/interview-service/service.yaml
+  - apps/interview-service/deployment.yaml
+  - apps/practice-service/service.yaml
+  - apps/practice-service/deployment.yaml
+  - apps/analyze-service/deployment.yaml
+  - apps/notification-service/deployment.yaml
+  - apps/nginx/service.yaml
+  - apps/nginx/deployment.yaml
