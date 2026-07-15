@@ -19,7 +19,7 @@ router = APIRouter(prefix="/user/me/cv", tags=["CV"])
     status_code=status.HTTP_202_ACCEPTED,
     responses={
         status.HTTP_400_BAD_REQUEST: {"description": "Invalid or empty PDF"},
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE: {"description": "File too large"},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"description": "File too large"},
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"description": "Only PDF uploads are supported"},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "S3 or RabbitMQ failure"},
     },
