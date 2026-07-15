@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - app-secrets.yaml
+
+patches:
+  - path: patches/nginx-service.yaml
+  - path: patches/images.yaml
+
+replicas:
+  - name: user-management
+    count: 1
+  - name: interview-service
+    count: 1
+  - name: practice-service
+    count: 1
+  - name: analyze-service
+    count: 1
+  - name: notification-service
+    count: 1
+  - name: nginx
+    count: 1
+  - name: redis
+    count: 1
+  - name: localstack
+    count: 1
