@@ -3,7 +3,6 @@ from uuid import UUID, uuid4
 
 from shared_models.messaging.common import AnalysisStatus
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
-
 from src.config import settings
 from src.domain.entities.user_cv_upload import UserCVUpload
 from src.domain.exceptions.cv_upload_errors import (

@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from src.application.use_cases.reset_password_use_case import ResetPasswordUseCase
 from src.domain.exceptions.not_sent_error import NotSentError
 

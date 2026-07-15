@@ -3,6 +3,7 @@ name = "ai-interview-tutor"
 version = "0.1.0"
 description = ""
 authors = ["Aliaksandr Fedaraka <fedorakooo@gmail.com>"]
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -10,7 +11,7 @@ motor = "^3.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.2.0"
-black = "^25.1.0"
+black = "25.1.0"
 mypy = "^1.15.0"
 ruff = "^0.12.7"
 

@@ -110,7 +110,9 @@ async def request_reset_password(
     },
 )
 async def confirm_reset_password(
-    confirm_reset_password_use_case: Annotated[ConfirmResetPasswordUseCase, Depends(get_confirm_reset_password_use_case)],
+    confirm_reset_password_use_case: Annotated[
+        ConfirmResetPasswordUseCase, Depends(get_confirm_reset_password_use_case)
+    ],
     token: str,
     reset_password_request: ResetPasswordRequest,
 ) -> dict[str, str]:

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from redis.asyncio import Redis
-
 from shared_models.interview.session import InterviewSessionStatus
 from src.config import settings
 

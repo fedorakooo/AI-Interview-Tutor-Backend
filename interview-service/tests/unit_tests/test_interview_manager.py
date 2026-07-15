@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -6,7 +7,6 @@ import pytest
 from fastapi import WebSocket
 from shared_models.cv.cv_data import CVData
 from shared_models.interview.session import InterviewSessionStatus
-
 from src.api.v1.managers.interview_manager import (
     SERVER_SHUTDOWN_CLOSE_CODE,
     ActiveSession,
@@ -74,10 +74,12 @@ async def test_shutdown_suspends_active_sessions(interview_manager: InterviewCon
 
     await interview_manager.shutdown()
 
-    interview_manager.session_repository.update_session.assert_awaited_once()
-    update_kwargs = interview_manager.session_repository.update_session.await_args.kwargs
+    session_repository = cast(AsyncMock, interview_manager.session_repository)
+    session_registry = cast(AsyncMock, interview_manager.session_registry)
+    session_repository.update_session.assert_awaited_once()
+    update_kwargs = session_repository.update_session.await_args.kwargs
     assert update_kwargs["status"] == InterviewSessionStatus.SUSPENDED
-    interview_manager.session_registry.unregister_session.assert_awaited_once_with(session_id, user_id)
+    session_registry.unregister_session.assert_awaited_once_with(session_id, user_id)
     websocket.close.assert_awaited_once_with(code=SERVER_SHUTDOWN_CLOSE_CODE)
     assert session_id not in interview_manager._active_sessions
     assert interview_manager.accepting_connections is False

@@ -4,7 +4,6 @@ from uuid import uuid4
 
 import pytest
 from shared_models.messaging.common import AnalysisStatus
-
 from src.application.use_cases.cv.get_cv_status_use_case import GetCVStatusUseCase
 from src.application.use_cases.cv.upload_cv_use_case import UploadCVUseCase
 from src.domain.entities.user_cv_upload import UserCVUpload

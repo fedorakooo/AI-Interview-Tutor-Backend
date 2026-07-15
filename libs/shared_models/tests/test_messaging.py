@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from shared_models.cv.cv_data import CVData
 from shared_models.cv.cv_items import SkillItem
 from shared_models.messaging.common import AnalysisStatus, ExtractionMetadata

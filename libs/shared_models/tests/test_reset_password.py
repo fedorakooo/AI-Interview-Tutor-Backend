@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-
 from shared_models.messaging.reset_password import ResetPasswordMessage
 
 

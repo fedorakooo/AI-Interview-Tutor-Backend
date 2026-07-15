@@ -1,7 +1,5 @@
 import asyncio
-import json
 import logging
-from uuid import UUID
 
 import aio_pika
 from shared_models.messaging.cv_analysis import CVAnalysisResultMessage

@@ -1,4 +1,5 @@
 from shared_models.cv.cv_data import CVData
+
 from src.domain.models.interview_state import InterviewState
 from src.domain.models.user_profile import UserProfile
 from src.domain.value_objects.interview_stage import IntermediateInterviewStage, OverallInterviewStage

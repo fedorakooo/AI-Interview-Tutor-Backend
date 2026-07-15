@@ -1,6 +1,5 @@
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
-
 from src.config import settings
 
 
