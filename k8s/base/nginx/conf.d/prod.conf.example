@@ -1,0 +1,28 @@
+# Production TLS template — copy to prod.conf, mount certificates, and enable in docker-compose.
+#
+# Compose volume example:
+#   - ./k8s/base/nginx/conf.d/prod.conf:/etc/nginx/conf.d/prod.conf:ro
+#   - ./certs:/etc/nginx/certs:ro
+
+include /etc/nginx/snippets/upstreams.conf;
+
+server {
+    listen 80;
+    server_name app.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name app.example.com;
+    client_max_body_size 10m;
+
+    ssl_certificate     /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    include /etc/nginx/snippets/security-headers.conf;
+    include /etc/nginx/snippets/gateway-locations.conf;
+}
