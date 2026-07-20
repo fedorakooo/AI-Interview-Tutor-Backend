@@ -241,5 +241,6 @@ jobs:
           tags: ai-interview-tutor/${{ matrix.service }}:ci
           # Per-service scope avoids cross-matrix cache collisions; ignore-error
           # prevents BlobNotFound flakiness from stale GHA cache entries.
+          # mode=min keeps export fast (analyze/docling layers are huge with mode=max).
           cache-from: type=gha,scope=${{ matrix.service }},ignore-error=true
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }},ignore-error=true
+          cache-to: type=gha,mode=min,scope=${{ matrix.service }},ignore-error=true
