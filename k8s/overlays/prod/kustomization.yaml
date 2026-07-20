@@ -10,3 +10,4 @@ resources:
 
 patches:
   - path: patches/nginx-service-clusterip.yaml
+  - path: patches/app-config-production.yaml
