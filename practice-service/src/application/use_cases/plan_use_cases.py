@@ -97,6 +97,14 @@ class GetPlanUseCase:
         return plan
 
 
+class GetPlanStatusUseCase:
+    def __init__(self, plan_repository) -> None:
+        self._plans = plan_repository
+
+    async def execute(self, user_id: UUID, plan_id: UUID):
+        return await self._plans.get_plan_status(str(plan_id), str(user_id))
+
+
 class ListPlansUseCase:
     def __init__(self, plan_repository) -> None:
         self._plans = plan_repository

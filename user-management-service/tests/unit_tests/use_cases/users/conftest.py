@@ -87,6 +87,7 @@ def sample_user_read_dto(sample_user: User) -> UserReadDTO:
         username=sample_user.username,
         phone_number=sample_user.phone_number,
         role=sample_user.role,
+        is_blocked=sample_user.is_blocked,
         created_at=sample_user.created_at,
         modified_at=sample_user.modified_at,
     )
@@ -99,6 +100,7 @@ def sample_user_update_dto(sample_updated_user: User, sample_now: datetime) -> U
         second_name=sample_updated_user.second_name,
         phone_number=sample_updated_user.phone_number,
         email=sample_updated_user.email,
+        is_blocked=None,
     )
 
 
@@ -112,6 +114,7 @@ def sample_updated_user_read_dto(sample_updated_user: User) -> UserReadDTO:
         username=sample_updated_user.username,
         phone_number=sample_updated_user.phone_number,
         role=sample_updated_user.role,
+        is_blocked=sample_updated_user.is_blocked,
         created_at=sample_updated_user.created_at,
         modified_at=sample_updated_user.modified_at,
     )

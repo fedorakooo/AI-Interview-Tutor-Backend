@@ -122,6 +122,7 @@ class LoggerSettings(BaseSettings):
 class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
+    allow_sample_cv_fallback: bool = False
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
 
     llm_provider: LLMProvider = LLMProvider.OPENAI

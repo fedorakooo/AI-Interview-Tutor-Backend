@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  ENVIRONMENT: production
+  DEBUG: "false"
+  ALLOW_SAMPLE_CV_FALLBACK: "false"

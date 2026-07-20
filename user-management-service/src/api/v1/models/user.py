@@ -61,6 +61,7 @@ class UserResponse(BaseModel):
     phone_number: str
     email: EmailStr
     role: UserRole
+    is_blocked: bool
     created_at: datetime
     modified_at: datetime
 
@@ -76,6 +77,7 @@ class UserResponse(BaseModel):
             created_at=user.created_at,
             modified_at=user.modified_at,
             role=user.role,
+            is_blocked=user.is_blocked,
         )
 
 
@@ -103,6 +105,22 @@ class UserUpdateRequest(BaseModel):
             second_name=self.second_name,
             phone_number=self.phone_number,
             email=self.email,
+            is_blocked=None,
+        )
+
+
+class AdminUserUpdateRequest(UserUpdateRequest):
+    """Admin/moderator update payload; may block or unblock a user."""
+
+    is_blocked: bool | None = None
+
+    def to_dto(self) -> UserUpdateDTO:
+        return UserUpdateDTO(
+            first_name=self.first_name,
+            second_name=self.second_name,
+            phone_number=self.phone_number,
+            email=self.email,
+            is_blocked=self.is_blocked,
         )
 
 

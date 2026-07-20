@@ -20,6 +20,7 @@ class UserMapper:
             phone_number=user.phone_number,
             email=user.email,
             role=user.role,
+            is_blocked=user.is_blocked,
             created_at=user.created_at,
             modified_at=user.modified_at,
         )
@@ -64,7 +65,9 @@ class UserMapper:
             phone_number=(user_update_dto.phone_number if user_update_dto.phone_number else current_user.phone_number),
             email=(user_update_dto.email if user_update_dto.email else current_user.email),
             role=current_user.role,
-            is_blocked=current_user.is_blocked,
+            is_blocked=(
+                user_update_dto.is_blocked if user_update_dto.is_blocked is not None else current_user.is_blocked
+            ),
             created_at=current_user.created_at,
             modified_at=now,
         )

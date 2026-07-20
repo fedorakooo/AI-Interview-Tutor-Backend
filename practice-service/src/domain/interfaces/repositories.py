@@ -16,6 +16,10 @@ class IPlanRepository(Protocol):
         """Return a plan owned by the given user, or None if not found."""
         pass
 
+    async def get_plan_status(self, plan_id: str, user_id: str):
+        """Return lightweight status fields for a plan owned by the user."""
+        pass
+
     async def get_plan_by_id(self, plan_id: str) -> PracticePlan | None:
         """Return a plan by identifier without ownership filtering."""
         pass

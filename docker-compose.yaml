@@ -194,6 +194,7 @@ services:
       REDIS_USER: ${REDIS_USER:-app}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
       INSTANCE_ID: ${HOSTNAME}
+      ALLOW_SAMPLE_CV_FALLBACK: ${ALLOW_SAMPLE_CV_FALLBACK:-true}
     expose:
       - "8001"
     depends_on:

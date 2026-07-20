@@ -21,6 +21,7 @@ class UserUpdateDTO:
     second_name: str | None
     phone_number: str | None
     email: str | None
+    is_blocked: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,7 @@ class UserReadDTO:
     phone_number: str
     email: str
     role: UserRole
+    is_blocked: bool
     created_at: datetime
     modified_at: datetime
 

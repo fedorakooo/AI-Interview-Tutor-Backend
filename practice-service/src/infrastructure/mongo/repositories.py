@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
@@ -7,6 +8,15 @@ from shared_models.practice.plan import PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.config import settings
 from src.infrastructure.mongo.client import MongoClientFactory
+
+
+@dataclass(frozen=True, slots=True)
+class PlanStatusSnapshot:
+    plan_id: UUID
+    status: PlanStatus
+    ready_at: datetime | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class PlanRepository:
@@ -34,6 +44,31 @@ class PlanRepository:
     async def get_plan(self, plan_id: str, user_id: str) -> PracticePlan | None:
         document = await self._collection.find_one({"plan_id": plan_id, "user_id": user_id})
         return self._from_document(document) if document else None
+
+    async def get_plan_status(self, plan_id: str, user_id: str) -> PlanStatusSnapshot | None:
+        document = await self._collection.find_one(
+            {"plan_id": plan_id, "user_id": user_id},
+            projection={
+                "_id": 0,
+                "plan_id": 1,
+                "status": 1,
+                "ready_at": 1,
+                "error_code": 1,
+                "error_message": 1,
+            },
+        )
+        if not document:
+            return None
+        ready_at = document.get("ready_at")
+        if isinstance(ready_at, str):
+            ready_at = datetime.fromisoformat(ready_at)
+        return PlanStatusSnapshot(
+            plan_id=UUID(str(document["plan_id"])),
+            status=PlanStatus(document["status"]),
+            ready_at=ready_at,
+            error_code=document.get("error_code"),
+            error_message=document.get("error_message"),
+        )
 
     async def get_plan_by_id(self, plan_id: str) -> PracticePlan | None:
         document = await self._collection.find_one({"plan_id": plan_id})
