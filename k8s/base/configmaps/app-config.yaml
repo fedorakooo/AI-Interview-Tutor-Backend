@@ -54,6 +54,7 @@ data:
 
   ENVIRONMENT: development
   DEBUG: "true"
+  ALLOW_SAMPLE_CV_FALLBACK: "true"
   CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost
 
   LLM_PROVIDER: openai

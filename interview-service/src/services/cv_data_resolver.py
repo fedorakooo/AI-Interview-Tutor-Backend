@@ -35,14 +35,15 @@ class CVDataResolver:
     def __init__(self, mongo_repository: IMongoRepository):
         self.mongo_repository = mongo_repository
 
-    async def resolve(self, user_id: str) -> CVResolutionResult:
+    async def resolve(self, user_id: str, *, allow_sample_fallback: bool | None = None) -> CVResolutionResult:
         document = await self.mongo_repository.find_latest_by_field(
             settings.mongo_settings.cv_user_id_field,
             user_id,
             extra_filter={"status": AnalysisStatus.COMPLETED.value},
         )
         if document is None:
-            if settings.environment == "production":
+            use_sample = settings.allow_sample_cv_fallback if allow_sample_fallback is None else allow_sample_fallback
+            if not use_sample:
                 raise CVNotReadyError()
 
             app_logger.warning("No analyzed CV found for user %s, using sample profile", user_id)
@@ -55,6 +56,10 @@ class CVDataResolver:
             source="mongodb",
             correlation_id=str(correlation_id) if correlation_id is not None else None,
         )
+
+    async def get_latest_completed(self, user_id: str) -> CVResolutionResult:
+        """Return the latest completed CV without sample fallback (for REST clients)."""
+        return await self.resolve(user_id, allow_sample_fallback=False)
 
     @staticmethod
     def _normalize_cv_payload(payload: dict[str, Any]) -> dict[str, Any]:

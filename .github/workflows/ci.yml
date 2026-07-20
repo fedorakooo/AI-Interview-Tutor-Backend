@@ -239,5 +239,7 @@ jobs:
           file: ${{ matrix.service }}/Dockerfile
           push: false
           tags: ai-interview-tutor/${{ matrix.service }}:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Per-service scope avoids cross-matrix cache collisions; ignore-error
+          # prevents BlobNotFound flakiness from stale GHA cache entries.
+          cache-from: type=gha,scope=${{ matrix.service }},ignore-error=true
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }},ignore-error=true

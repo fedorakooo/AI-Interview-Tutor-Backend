@@ -8,6 +8,7 @@ from src.application.services.plan_context_builder import PlanContextBuilder
 from src.application.services.practice_services import ExerciseSanitizer, ExerciseValidator, QuotaService
 from src.application.use_cases.plan_use_cases import (
     ArchivePlanUseCase,
+    GetPlanStatusUseCase,
     GetPlanUseCase,
     ListPlansUseCase,
     RequestPlanUseCase,
@@ -27,6 +28,7 @@ class AppContainer:
     update_profile_use_case: UpdateProfileUseCase
     request_plan_use_case: RequestPlanUseCase
     get_plan_use_case: GetPlanUseCase
+    get_plan_status_use_case: GetPlanStatusUseCase
     list_plans_use_case: ListPlansUseCase
     archive_plan_use_case: ArchivePlanUseCase
     submit_attempt_use_case: SubmitAttemptUseCase
@@ -60,6 +62,8 @@ def build_container(
         context_builder,
         plan_generator,
         validator,
+        publisher,
+        settings.rabbitmq_settings.practice_plan_ready_queue_name,
     )
 
     from src.application.use_cases.worker_use_cases import HandleInterviewCompletedUseCase
@@ -86,6 +90,7 @@ def build_container(
                 settings.rabbitmq_settings.practice_plan_queue_name,
             ),
             get_plan_use_case=GetPlanUseCase(plan_repository, sanitizer),
+            get_plan_status_use_case=GetPlanStatusUseCase(plan_repository),
             list_plans_use_case=ListPlansUseCase(plan_repository),
             archive_plan_use_case=ArchivePlanUseCase(plan_repository),
             submit_attempt_use_case=SubmitAttemptUseCase(
