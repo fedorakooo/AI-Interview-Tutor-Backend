@@ -4,12 +4,13 @@ import pytest
 from shared_models.messaging.common import AnalysisStatus
 from src.agent.data.sample_data import SAMPLE_CV
 from src.config import settings
+from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
 from src.services.cv_data_resolver import CVDataResolver
 
 
 @pytest.mark.asyncio
 async def test_resolver_returns_mongodb_cv(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "allow_sample_cv_fallback", False)
     mongo_repository = AsyncMock()
     mongo_repository.find_latest_by_field.return_value = {
         "correlation_id": "corr-1",
@@ -28,8 +29,8 @@ async def test_resolver_returns_mongodb_cv(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_resolver_falls_back_to_sample_in_development(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "environment", "development")
+async def test_resolver_falls_back_to_sample_when_flag_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allow_sample_cv_fallback", True)
     mongo_repository = AsyncMock()
     mongo_repository.find_latest_by_field.return_value = None
 
@@ -40,12 +41,20 @@ async def test_resolver_falls_back_to_sample_in_development(monkeypatch: pytest.
 
 
 @pytest.mark.asyncio
-async def test_resolver_raises_in_production_without_cv(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "environment", "production")
+async def test_resolver_raises_when_fallback_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allow_sample_cv_fallback", False)
     mongo_repository = AsyncMock()
     mongo_repository.find_latest_by_field.return_value = None
 
-    from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
-
     with pytest.raises(CVNotReadyError):
         await CVDataResolver(mongo_repository).resolve("user-1")
+
+
+@pytest.mark.asyncio
+async def test_get_latest_completed_never_uses_sample(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "allow_sample_cv_fallback", True)
+    mongo_repository = AsyncMock()
+    mongo_repository.find_latest_by_field.return_value = None
+
+    with pytest.raises(CVNotReadyError):
+        await CVDataResolver(mongo_repository).get_latest_completed("user-1")
