@@ -142,22 +142,22 @@ async def get_plan_status(
 ) -> PlanStatusResponse:
     """Lightweight poll endpoint for plan readiness (prefer over full GET while generating)."""
     container = get_container(request)
-    plan = await container.get_plan_use_case.execute(get_user_id(payload), plan_id)
-    if plan is None:
+    snapshot = await container.get_plan_status_use_case.execute(get_user_id(payload), plan_id)
+    if snapshot is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
     message = None
-    if plan.status in {PlanStatus.PENDING, PlanStatus.GENERATING}:
+    if snapshot.status in {PlanStatus.PENDING, PlanStatus.GENERATING}:
         message = "Plan is being generated"
-    elif plan.status == PlanStatus.FAILED:
-        message = plan.error_message or "Plan generation failed"
+    elif snapshot.status == PlanStatus.FAILED:
+        message = snapshot.error_message or "Plan generation failed"
 
     return PlanStatusResponse(
-        plan_id=plan.plan_id,
-        status=plan.status,
-        ready_at=plan.ready_at.isoformat() if plan.ready_at else None,
-        error_code=plan.error_code,
-        error_message=plan.error_message,
+        plan_id=snapshot.plan_id,
+        status=snapshot.status,
+        ready_at=snapshot.ready_at.isoformat() if snapshot.ready_at else None,
+        error_code=snapshot.error_code,
+        error_message=snapshot.error_message,
         message=message,
     )
 
