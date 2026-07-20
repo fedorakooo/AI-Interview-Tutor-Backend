@@ -11,7 +11,7 @@ from src.api.dependencies.use_cases.user_management import (
 )
 from src.api.security import require_roles
 from src.api.v1.models.filter import UserFilterRequest
-from src.api.v1.models.user import UserResponse, UsersResponse, UserUpdateRequest
+from src.api.v1.models.user import AdminUserUpdateRequest, UserResponse, UsersResponse
 from src.application.use_cases.user_management.get_user_by_id_use_case import GetUserByIdUseCase
 from src.application.use_cases.user_management.get_users_use_case import GetUsersUseCase
 from src.application.use_cases.user_management.update_user_use_case import UpdateUserUseCase
@@ -70,7 +70,7 @@ async def get_users(
 async def update_user(
     user_id: UUID,
     _: Annotated[AccessTokenPayload, Depends(require_roles(UserRole.ADMIN, UserRole.MODERATOR))],
-    user_update_request: UserUpdateRequest,
+    user_update_request: AdminUserUpdateRequest,
     user_update_use_case: Annotated[UpdateUserUseCase, Depends(get_update_user_use_case)],
 ) -> UserResponse:
     user_update_dto = user_update_request.to_dto()
