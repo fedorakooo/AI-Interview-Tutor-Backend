@@ -154,6 +154,53 @@ class TestGeneratePlanUseCase:
         assert failed_update.args[1]["status"] == PlanStatus.FAILED.value
 
 
+    @pytest.mark.asyncio
+    async def test_publishes_plan_ready_event_on_success(self) -> None:
+        pending = _ready_plan(status=PlanStatus.PENDING)
+        claimed = _ready_plan(status=PlanStatus.GENERATING, plan_id=pending.plan_id, user_id=pending.user_id)
+        plan_repo = AsyncMock()
+        plan_repo.get_plan_by_id = AsyncMock(return_value=pending)
+        plan_repo.try_claim_plan_generation = AsyncMock(return_value=claimed)
+        plan_repo.update_plan = AsyncMock()
+        profile_repo = AsyncMock()
+        profile_repo.get_profile = AsyncMock(return_value=None)
+        profile_repo.default_profile = MagicMock(
+            return_value=UserPracticeProfile(user_id=pending.user_id, updated_at=datetime.now(UTC))
+        )
+        profile_repo.upsert_profile = AsyncMock()
+        context_builder = AsyncMock()
+        context_builder.build = AsyncMock(return_value=_built_context())
+        draft = sample_plan_draft()
+        plan_generator = AsyncMock()
+        plan_generator.generate = AsyncMock(return_value=draft)
+        publisher = AsyncMock()
+        use_case = GeneratePlanUseCase(
+            plan_repo,
+            profile_repo,
+            context_builder,
+            plan_generator,
+            ExerciseValidator(),
+            publisher,
+            "practice-plan-ready-stream",
+        )
+
+        await use_case.execute(
+            PracticePlanJobMessage(
+                job_id=uuid4(),
+                plan_id=pending.plan_id,
+                user_id=pending.user_id,
+                source=PlanSource.MANUAL,
+                request=PlanGenerationRequest(exercise_count=3),
+                published_at=datetime.now(UTC),
+            )
+        )
+
+        publisher.publish.assert_awaited_once()
+        queue_name, payload = publisher.publish.await_args.args
+        assert queue_name == "practice-plan-ready-stream"
+        assert str(pending.plan_id) in payload
+
+
 class TestHandleInterviewCompletedUseCase:
     @pytest.mark.asyncio
     async def test_duplicate_session_id_is_idempotent(self) -> None:

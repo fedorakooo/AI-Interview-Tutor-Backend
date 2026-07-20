@@ -106,6 +106,15 @@ async def list_plans(
     ]
 
 
+class PlanStatusResponse(BaseModel):
+    plan_id: UUID
+    status: PlanStatus
+    ready_at: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    message: str | None = None
+
+
 @router.get("/plans/{plan_id}")
 async def get_plan(
     plan_id: UUID,
@@ -123,6 +132,34 @@ async def get_plan(
             "message": "Plan is being generated",
         }
     return plan.model_dump(mode="json")
+
+
+@router.get("/plans/{plan_id}/status", response_model=PlanStatusResponse)
+async def get_plan_status(
+    plan_id: UUID,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    request: Request,
+) -> PlanStatusResponse:
+    """Lightweight poll endpoint for plan readiness (prefer over full GET while generating)."""
+    container = get_container(request)
+    plan = await container.get_plan_use_case.execute(get_user_id(payload), plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    message = None
+    if plan.status in {PlanStatus.PENDING, PlanStatus.GENERATING}:
+        message = "Plan is being generated"
+    elif plan.status == PlanStatus.FAILED:
+        message = plan.error_message or "Plan generation failed"
+
+    return PlanStatusResponse(
+        plan_id=plan.plan_id,
+        status=plan.status,
+        ready_at=plan.ready_at.isoformat() if plan.ready_at else None,
+        error_code=plan.error_code,
+        error_message=plan.error_message,
+        message=message,
+    )
 
 
 @router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)

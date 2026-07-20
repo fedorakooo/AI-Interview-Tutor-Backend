@@ -5,7 +5,12 @@ from uuid import UUID, uuid4
 from pymongo.errors import DuplicateKeyError
 from shared_models.practice.attempt import AttemptStatus, ExerciseAttempt
 from shared_models.practice.exercise import ExerciseType, FlashcardRating
-from shared_models.practice.messaging import PlanGenerationRequest, PlanSource, PracticePlanJobMessage
+from shared_models.practice.messaging import (
+    PlanGenerationRequest,
+    PlanSource,
+    PracticePlanJobMessage,
+    PracticePlanReadyEvent,
+)
 from shared_models.practice.plan import PlanStatus, PracticePlan
 from src.agent.answer_grader import AnswerGrader
 from src.agent.plan_generator import PlanGenerator
@@ -33,12 +38,16 @@ class GeneratePlanUseCase:
         context_builder: PlanContextBuilder,
         plan_generator: PlanGenerator,
         validator: ExerciseValidator,
+        publisher: IMessagePublisher | None = None,
+        plan_ready_queue_name: str | None = None,
     ) -> None:
         self._plans = plan_repository
         self._profiles = profile_repository
         self._context_builder = context_builder
         self._plan_generator = plan_generator
         self._validator = validator
+        self._publisher = publisher
+        self._plan_ready_queue_name = plan_ready_queue_name
 
     async def execute(self, message: PracticePlanJobMessage) -> None:
         plan = await self._plans.get_plan_by_id(str(message.plan_id))
@@ -97,6 +106,14 @@ class GeneratePlanUseCase:
                         "error_message": None,
                     },
                 )
+                await self._publish_plan_ready(
+                    plan_id=message.plan_id,
+                    user_id=message.user_id,
+                    plan_title=draft.title,
+                    exercise_count=len(draft.exercises),
+                    source=message.source,
+                    published_at=ready_at,
+                )
                 return
             except PlanGenerationFailedError as exc:
                 last_error = exc
@@ -112,6 +129,31 @@ class GeneratePlanUseCase:
                 "updated_at": failed_at.isoformat(),
             },
         )
+
+    async def _publish_plan_ready(
+        self,
+        *,
+        plan_id: UUID,
+        user_id: UUID,
+        plan_title: str,
+        exercise_count: int,
+        source: PlanSource,
+        published_at: datetime,
+    ) -> None:
+        if self._publisher is None or not self._plan_ready_queue_name:
+            return
+
+        event = PracticePlanReadyEvent(
+            event_id=uuid4(),
+            plan_id=plan_id,
+            user_id=user_id,
+            plan_title=plan_title,
+            exercise_count=exercise_count,
+            source=source,
+            published_at=published_at,
+        )
+        await self._publisher.publish(self._plan_ready_queue_name, event.model_dump_json())
+        app_logger.info("Published practice-plan-ready for plan %s", plan_id)
 
 
 class HandleInterviewCompletedUseCase:

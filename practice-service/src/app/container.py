@@ -60,6 +60,8 @@ def build_container(
         context_builder,
         plan_generator,
         validator,
+        publisher,
+        settings.rabbitmq_settings.practice_plan_ready_queue_name,
     )
 
     from src.application.use_cases.worker_use_cases import HandleInterviewCompletedUseCase
