@@ -42,9 +42,7 @@ class CVDataResolver:
             extra_filter={"status": AnalysisStatus.COMPLETED.value},
         )
         if document is None:
-            use_sample = (
-                settings.allow_sample_cv_fallback if allow_sample_fallback is None else allow_sample_fallback
-            )
+            use_sample = settings.allow_sample_cv_fallback if allow_sample_fallback is None else allow_sample_fallback
             if not use_sample:
                 raise CVNotReadyError()
 

@@ -153,7 +153,6 @@ class TestGeneratePlanUseCase:
         failed_update = plan_repo.update_plan.call_args_list[-1]
         assert failed_update.args[1]["status"] == PlanStatus.FAILED.value
 
-
     @pytest.mark.asyncio
     async def test_publishes_plan_ready_event_on_success(self) -> None:
         pending = _ready_plan(status=PlanStatus.PENDING)
