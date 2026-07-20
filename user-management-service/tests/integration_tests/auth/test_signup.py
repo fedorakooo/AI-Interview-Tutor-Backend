@@ -69,7 +69,6 @@ async def test_signup_duplicate_username(test_client, sample_user_data):
             "phone_number": faker.phone_number(),
         },
     )
-    print(response.json())
     assert response.status_code == 201
 
     response = await test_client.post(
@@ -80,7 +79,6 @@ async def test_signup_duplicate_username(test_client, sample_user_data):
             "phone_number": faker.phone_number(),
         },
     )
-    print(response.json())
     assert response.status_code == 400
 
 
