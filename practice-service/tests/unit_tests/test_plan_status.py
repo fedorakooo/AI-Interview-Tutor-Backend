@@ -64,7 +64,9 @@ async def test_plan_repository_get_plan_status_uses_projection() -> None:
     assert snapshot is not None
     assert snapshot.plan_id == plan_id
     assert snapshot.status == PlanStatus.READY
-    kwargs = collection.find_one.await_args.kwargs
+    await_args = collection.find_one.await_args
+    assert await_args is not None
+    kwargs = await_args.kwargs
     assert "projection" in kwargs
     assert kwargs["projection"]["plan_id"] == 1
     assert "exercises" not in kwargs["projection"]

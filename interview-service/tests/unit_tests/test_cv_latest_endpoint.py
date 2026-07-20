@@ -5,10 +5,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jwt_handler.handlers import JWTTokenHandler
 from shared_models.messaging.common import AnalysisStatus
+from src.agent.data.sample_data import SAMPLE_CV
 from src.api.dependencies.auth import get_token_handler
 from src.api.dependencies.mongo import get_cv_analysis_repository
 from src.api.v1.endpoints.cv import router
-from src.agent.data.sample_data import SAMPLE_CV
 
 
 @pytest.fixture
