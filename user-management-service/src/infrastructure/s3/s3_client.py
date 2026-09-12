@@ -30,3 +30,7 @@ class S3Client(IS3Client):
                 Body=body,
                 ContentType=content_type,
             )
+
+    async def delete_object(self, key: str) -> None:
+        async with self._session.client("s3", **self._config) as s3:
+            await s3.delete_object(Bucket=self._bucket_name, Key=key)
