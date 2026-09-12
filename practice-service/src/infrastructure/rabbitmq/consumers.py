@@ -7,7 +7,8 @@ import time
 from aio_pika import IncomingMessage, connect_robust
 from pydantic import ValidationError
 from shared_models.messaging.retry_policy import MAX_RETRIES, MessageRetryPolicy, get_retry_count
-from shared_models.practice.messaging import InterviewCompletedEvent, PracticePlanJobMessage
+from shared_models.practice.messaging import InterviewCompletedEvent, PracticePlanJobMessage, PracticePlanReadyEvent
+from src.api.v1.endpoints.notifications import push_notification
 from src.config import settings
 from src.domain.exceptions.practice_errors import PlanGenerationFailedError, PlanNotFoundError
 from src.logger import app_logger
@@ -80,6 +81,10 @@ class PracticeConsumers:
                 settings.rabbitmq_settings.interview_completed_queue_name,
                 durable=True,
             )
+            plan_ready_queue = await channel.declare_queue(
+                settings.rabbitmq_settings.practice_plan_ready_queue_name,
+                durable=True,
+            )
 
             await plan_queue.consume(
                 lambda message: self._on_plan_job(
@@ -94,6 +99,7 @@ class PracticeConsumers:
                     settings.rabbitmq_settings.interview_completed_queue_name,
                 )
             )
+            await plan_ready_queue.consume(self._on_plan_ready)
 
             self._logger.info("Practice consumers started")
             await self._stop_event.wait()
@@ -152,6 +158,24 @@ class PracticeConsumers:
                 await self._retry_policy.republish_with_retry(channel, message, retry_count + 1)
             else:
                 await self._send_dlq(channel, dlq_name, message, queue_name, retry_count, "unknown_error")
+            await message.ack()
+
+    async def _on_plan_ready(self, message: IncomingMessage) -> None:
+        try:
+            payload = json.loads(message.body.decode())
+            event = PracticePlanReadyEvent.model_validate(payload)
+            push_notification(
+                user_id=str(event.user_id),
+                title="Practice plan ready",
+                body=f"Your plan '{event.plan_title}' with {event.exercise_count} exercises is ready.",
+                kind="plan_ready",
+            )
+            await message.ack()
+        except (json.JSONDecodeError, ValidationError) as exc:
+            self._logger.error("Invalid plan-ready payload: %s", exc)
+            await message.ack()
+        except Exception:
+            self._logger.exception("Plan-ready notification failed")
             await message.ack()
 
     async def _send_dlq(self, channel, dlq_name, message, queue_name, retry_count, reason) -> None:

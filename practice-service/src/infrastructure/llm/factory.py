@@ -57,4 +57,13 @@ class LLMFactory:
 
     @staticmethod
     def create_grader_llm() -> BaseChatModel:
+        if settings.practice_grading_model:
+            provider = settings.llm_provider
+            if provider == LLMProvider.OPENAI:
+                return ChatOpenAI(
+                    api_key=settings.openai_api_key,
+                    model=settings.practice_grading_model,
+                    temperature=settings.practice_settings.grading_temperature,
+                    timeout=settings.practice_settings.grading_timeout_seconds,
+                )
         return LLMFactory.create_llm(temperature=settings.practice_settings.grading_temperature)
