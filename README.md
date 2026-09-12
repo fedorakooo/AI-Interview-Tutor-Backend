@@ -14,8 +14,10 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 - [Services](#services)
   - [User Management](#user-management-service)
   - [Interview](#interview-service)
+  - [Practice](#practice-service)
   - [Analyze](#analyze-service)
   - [Notification](#notification-service)
+- [Observability, billing, privacy](#observability-billing-privacy)
 - [Data stores](#data-stores)
 - [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
@@ -28,30 +30,44 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 
 | Component | Type | Responsibility |
 |-----------|------|----------------|
-| [user-management-service](user-management-service) | HTTP (FastAPI) | Users, JWT auth (RS256), profiles, refresh-token rotation with Redis, password-reset API integrated with Notification, RabbitMQ publishing for CV jobs and notifications |
-| [interview-service](interview-service) | HTTP + WebSocket | LangGraph-driven interview flow, bundled static demo client, configurable checkpointing for scaled deployments |
-| [analyze-service](analyze-service) | Worker | Consume jobs from **`cv-analyze-stream`** → fetch PDF from S3 → extract text → structured `CVData` via LLM → MongoDB → publish results to **`cv-analysis-results`** |
-| [notification-service](notification-service) | Worker | Consume **`reset-password-stream`** jobs → persist outbound mail metadata → send via AWS SES |
-| [libs/jwt_handler](libs/jwt_handler) | Python package | JWT encode/decode, token DTOs, shared defaults for algorithm and TTLs |
+| [user-management-service](user-management-service) | HTTP (FastAPI) | Users, JWT auth (RS256), OAuth (Google/GitHub), billing entitlements, GDPR export/delete, refresh-token rotation with Redis, CV upload + RabbitMQ jobs |
+| [interview-service](interview-service) | HTTP + WebSocket | LangGraph mock interviews (modes, resume, transcripts), JD match, coding sandbox, question bank / learning paths |
+| [practice-service](practice-service) | HTTP + workers | Personalized practice plans, grading (MCQ/open/flashcard/code_review/scenario), progress, in-app notifications |
+| [analyze-service](analyze-service) | Worker | Consume **`cv-analyze-stream`** → S3 PDF → **Docling** extract → LLM → `CVData` → MongoDB → **`cv-analysis-results`** |
+| [notification-service](notification-service) | Worker | Transactional email via AWS SES (reset password, verify email, plan ready, digests) |
+| [libs/jwt_handler](libs/jwt_handler) | Python package | JWT encode/decode, token DTOs |
+| [libs/shared_models](libs/shared_models) | Python package | Shared CV/interview/practice/billing/JD DTOs and messaging contracts |
+| [libs/observability](libs/observability) | Python package | Correlation IDs, metrics, rate limits, PII redaction, Langfuse/Sentry hooks |
 
 ---
 
 ## Architecture
 
-High-level view of the platform (API gateway, services, RabbitMQ, databases, and S3). This repository ships the **User Management**, **Interview**, **Analyze**, and **Notification** backends; the diagram includes adjacent components for full-system context.
+High-level view of the platform (API gateway, services, RabbitMQ, databases, and S3). This repository ships **User Management**, **Interview**, **Practice**, **Analyze**, and **Notification** backends; the frontend lives in a separate Next.js repo.
 
 ![Architecture overview](docs/architecture-overview.png)
 
-**Synchronous paths.** Clients talk HTTP to **User Management** (Postgres, Redis; RabbitMQ readiness ensured at startup) and HTTP/WebSocket to **Interview** (checkpointing aligned with single-instance or scaled deployment profiles).
+**Synchronous paths.** Clients talk HTTP to **User Management** / **Practice** and HTTP/WebSocket to **Interview** (nginx sticky sessions for WS).
 
-**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`**, persists structured CV data, and publishes **`cv-analysis-results`**. **Notification** consumes **`reset-password-stream`**. Workers use durable queues, integrate with S3, MongoDB, and SES, and acknowledge or negative-acknowledge messages according to each adapter’s rules.
+**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`** (Docling + LLM). **Notification** consumes email streams. **Practice** workers consume interview-completed and practice-plan jobs and publish **`practice-plan-ready-stream`**.
 
 | Kind | Service | Typical command | Role |
 |------|---------|-----------------|------|
-| HTTP | [user-management-service](user-management-service) | `uvicorn src.main:app` | Auth and user APIs |
-| HTTP | [interview-service](interview-service) | `uvicorn src.main:app` | WebSocket interview + static demo |
-| Worker | [analyze-service](analyze-service) | `python -m src.main` | CV analysis pipeline |
+| HTTP | [user-management-service](user-management-service) | `uvicorn src.main:app` | Auth, users, billing, privacy |
+| HTTP | [interview-service](interview-service) | `uvicorn src.main:app` | WebSocket interview + coding/JD APIs |
+| HTTP | [practice-service](practice-service) | `uvicorn src.main:app` | Practice plans + notifications inbox |
+| Worker | [analyze-service](analyze-service) | `python -m src.main` | CV analysis pipeline (Docling) |
 | Worker | [notification-service](notification-service) | `python -m src.main` | Transactional email |
+
+---
+
+## Observability, billing, privacy
+
+- Correlation ID + Prometheus-style `/metrics` + in-process rate limits via `libs/observability`.
+- Optional Sentry (`SENTRY_DSN`), Langfuse (`LANGFUSE_*`), OTEL (`OTEL_EXPORTER_OTLP_ENDPOINT`).
+- Billing: `GET /api/v1/billing/entitlements`, `POST /api/v1/billing/checkout-session` (Stripe when `FEATURE_STRIPE_BILLING` + keys set).
+- Privacy: `GET /api/v1/privacy/export`, hardened `DELETE /api/v1/user/me/`.
+- Runbooks: [docs/runbooks/](docs/runbooks/).
 
 ---
 
