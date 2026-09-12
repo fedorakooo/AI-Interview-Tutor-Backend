@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from fastapi import WebSocket
 from langgraph.graph.state import CompiledStateGraph
 from shared_models.cv.cv_data import CVData
+from shared_models.interview.mode import InterviewStartConfig
 from shared_models.interview.report import InterviewReport
 from shared_models.interview.session import InterviewSessionStatus
 from shared_models.practice.messaging import InterviewCompletedEvent
@@ -68,6 +69,8 @@ class InterviewConnectionManager:
         cv_data: CVData,
         *,
         cv_correlation_id: str | None = None,
+        start_config: InterviewStartConfig | None = None,
+        resume_session_id: str | None = None,
     ) -> str:
         if not self._accepting_connections:
             await websocket.close(code=SERVER_SHUTDOWN_CLOSE_CODE)
@@ -75,14 +78,44 @@ class InterviewConnectionManager:
 
         await websocket.accept()
         user_id = str(user.id)
+        config = start_config or InterviewStartConfig()
+
+        if resume_session_id:
+            existing = await self.session_repository.get_session(resume_session_id)
+            if existing and existing.user_id == user_id and existing.status == InterviewSessionStatus.SUSPENDED:
+                session_id = resume_session_id
+                await self.session_repository.update_session(session_id, status=InterviewSessionStatus.ACTIVE)
+                await self.session_registry.register_session(session_id, user_id)
+                self._active_sessions[session_id] = ActiveSession(
+                    session_id=session_id,
+                    user_id=user_id,
+                    websocket=websocket,
+                    started_at=datetime.now(UTC),
+                    cv_correlation_id=cv_correlation_id or existing.cv_correlation_id,
+                )
+                snapshot = await self.interview_workflow.aget_state(self._graph_config(session_id))
+                if snapshot and snapshot.values:
+                    await self._send_message(
+                        session_id,
+                        {
+                            "type": "interview_resumed",
+                            "session_id": session_id,
+                            "stage": str(snapshot.values.get("overall_stage")),
+                        },
+                    )
+                    return session_id
+
         session_id = str(uuid4())
-        initial_state = create_agent_initial_state(user, cv_data)
+        initial_state = create_agent_initial_state(user, cv_data, config)
 
         await self.session_repository.create_session(
             session_id,
             user_id,
             cv_correlation_id=cv_correlation_id,
             instance_id=self.instance_id,
+            interview_mode=config.mode.value,
+            company_preset=config.company_preset,
+            role_track=config.role_track,
         )
         await self.session_registry.register_session(session_id, user_id)
 
@@ -94,7 +127,12 @@ class InterviewConnectionManager:
             cv_correlation_id=cv_correlation_id,
         )
 
-        app_logger.info("Interview started for user=%s session=%s", user_id, session_id)
+        app_logger.info(
+            "Interview started for user=%s session=%s mode=%s",
+            user_id,
+            session_id,
+            config.mode.value,
+        )
         await self._process_interview_step(session_id, initial_state)
         return session_id
 
@@ -121,24 +159,34 @@ class InterviewConnectionManager:
         try:
             updated_state = await self.interview_workflow.ainvoke(state, self._graph_config(session_id))
             await self.session_registry.refresh_session(session_id)
+            transcript = [
+                {"role": str(role), "content": content, "stage": str(updated_state["overall_stage"])}
+                for role, content in updated_state.get("messages", [])
+            ]
             await self.session_repository.update_session(
                 session_id,
                 overall_stage=str(updated_state["overall_stage"]),
                 message_count=len(updated_state.get("messages", [])),
+                transcript=transcript,
             )
 
             messages = updated_state.get("messages", [])
             if messages and messages[-1][0] == ConversationRole.AGENT:
-                await self._send_message(
-                    session_id,
-                    {
-                        "type": "agent_message",
-                        "content": messages[-1][1],
-                        "stage": str(updated_state["overall_stage"]),
-                        "session_id": session_id,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    },
-                )
+                agent_payload: dict = {
+                    "type": "agent_message",
+                    "content": messages[-1][1],
+                    "stage": str(updated_state["overall_stage"]),
+                    "session_id": session_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                metadata: dict = {}
+                if updated_state.get("answer_score") is not None:
+                    metadata["answer_score"] = updated_state["answer_score"]
+                if updated_state.get("answer_feedback"):
+                    metadata["answer_feedback"] = updated_state["answer_feedback"]
+                if metadata:
+                    agent_payload["metadata"] = metadata
+                await self._send_message(session_id, agent_payload)
 
             if updated_state["overall_stage"] == OverallInterviewStage.COMPLETED:
                 await self._complete_interview(session_id, updated_state)

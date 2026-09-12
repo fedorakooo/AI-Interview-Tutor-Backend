@@ -16,7 +16,8 @@ async def test_reset_password_success(test_client, sample_user_data):
     response = await test_client.post("/api/v1/auth/reset-password", data={"email": sample_user_data["email"]})
     assert response.status_code == 200
     data = response.json()
-    assert "password_reset_token" in data
+    assert data.get("detail")
+    assert "password_reset_token" not in data
 
 
 @pytest.mark.asyncio

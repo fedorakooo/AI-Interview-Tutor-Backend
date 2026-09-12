@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from shared_models.interview.report import InterviewReport
 
@@ -25,6 +25,10 @@ class InterviewSessionDocument(BaseModel):
     report: InterviewReport | None = None
     cv_correlation_id: str | None = None
     instance_id: str | None = None
+    interview_mode: str = "mixed"
+    company_preset: str | None = None
+    role_track: str | None = None
+    transcript: list[dict] = Field(default_factory=list)
 
     def to_mongo(self) -> dict:
         data = self.model_dump(mode="json")

@@ -15,4 +15,7 @@ Interview context:
 
 Candidate CV:
 {cv_summary}
+
+Company interview style (if any):
+{company_preset_context}
 """

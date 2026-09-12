@@ -4,6 +4,7 @@ from shared_models.messaging.cv_analysis import (
     CVAnalysisJobMessage,
     CVAnalysisResultMessage,
 )
+from shared_models.messaging.notifications import NotificationEmailMessage, VerifyEmailMessage
 from shared_models.messaging.reset_password import ResetPasswordMessage
 from shared_models.messaging.retry_policy import (
     DLQ_ALERT_MARKER,
@@ -27,8 +28,10 @@ __all__ = [
     "ExtractionMetadata",
     "MAX_RETRIES",
     "MessageRetryPolicy",
+    "NotificationEmailMessage",
     "RETRY_HEADER",
     "ResetPasswordMessage",
+    "VerifyEmailMessage",
     "compute_backoff_delay",
     "get_retry_count",
 ]

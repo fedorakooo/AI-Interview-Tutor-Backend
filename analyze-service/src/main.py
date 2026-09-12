@@ -10,6 +10,17 @@ from src.containers.container import Container
 from src.domain.adapters.inbound.rabbitmq_consumer import IRabbitMQConsumer
 
 
+def _init_observability() -> None:
+    try:
+        from observability import init_langfuse, init_otel, init_sentry
+
+        init_sentry("analyze-service")
+        init_langfuse()
+        init_otel("analyze-service")
+    except ImportError:
+        pass
+
+
 @inject
 def wait_for_rabbitmq(
     host: str = settings.rabbitmq_settings.host,
@@ -35,6 +46,7 @@ async def main(
     rabbitmq_consumer: IRabbitMQConsumer = Provide[Container.inbound_adapters.rabbitmq_consumer],
     mongo_repository=Provide[Container.outbound_adapters.mongo_cv_analysis_repository],
 ) -> None:
+    _init_observability()
     wait_for_rabbitmq()
     await mongo_repository.ensure_indexes()
 

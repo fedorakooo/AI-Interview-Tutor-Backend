@@ -14,6 +14,22 @@ def get_reset_password_producer() -> IRabbitMQProducer:
 
 
 @lru_cache
+def get_email_verify_producer() -> IRabbitMQProducer:
+    return RabbitMQProducer(
+        amqp_url=settings.rabbitmq_settings.url,
+        queue_name=settings.rabbitmq_settings.email_verify_queue_name,
+    )
+
+
+@lru_cache
+def get_user_deleted_producer() -> IRabbitMQProducer:
+    return RabbitMQProducer(
+        amqp_url=settings.rabbitmq_settings.url,
+        queue_name=settings.rabbitmq_settings.user_deleted_queue_name,
+    )
+
+
+@lru_cache
 def get_cv_analyzer_producer() -> IRabbitMQProducer:
     return RabbitMQProducer(
         amqp_url=settings.rabbitmq_settings.url,

@@ -9,10 +9,10 @@ from src.domain.value_objects.interview_stage import OverallInterviewStage
 async def generate_report_node(state: InterviewState) -> InterviewState:
     from langchain_core.prompts import ChatPromptTemplate
 
-    from src.agent.llm import llm
+    from src.agent.llm import get_interview_llm
 
     prompt = ChatPromptTemplate.from_template(GENERATE_REPORT_PROMPT)
-    chain = prompt | llm
+    chain = prompt | get_interview_llm("generate_report")
     response = await chain.ainvoke(
         {
             "conversation_context": format_messages(state.get("messages", [])),

@@ -57,6 +57,8 @@ def sample_user(sample_user_id: UUID, sample_now: datetime) -> User:
         role=UserRole.USER,
         created_at=sample_now,
         modified_at=sample_now,
+        is_email_verified=False,
+        subscription_tier="free",
     )
 
 
@@ -74,6 +76,8 @@ def sample_updated_user(sample_user: User, sample_modified_at: datetime) -> User
         role=sample_user.role,
         created_at=sample_user.created_at,
         modified_at=sample_modified_at,
+        is_email_verified=sample_user.is_email_verified,
+        subscription_tier=sample_user.subscription_tier,
     )
 
 
@@ -90,6 +94,8 @@ def sample_user_read_dto(sample_user: User) -> UserReadDTO:
         is_blocked=sample_user.is_blocked,
         created_at=sample_user.created_at,
         modified_at=sample_user.modified_at,
+        is_email_verified=sample_user.is_email_verified,
+        subscription_tier=sample_user.subscription_tier,
     )
 
 
@@ -117,6 +123,8 @@ def sample_updated_user_read_dto(sample_updated_user: User) -> UserReadDTO:
         is_blocked=sample_updated_user.is_blocked,
         created_at=sample_updated_user.created_at,
         modified_at=sample_updated_user.modified_at,
+        is_email_verified=sample_updated_user.is_email_verified,
+        subscription_tier=sample_updated_user.subscription_tier,
     )
 
 
@@ -134,6 +142,8 @@ def sample_user_after_leaving_group(sample_user: User, sample_modified_at: datet
         is_blocked=sample_user.is_blocked,
         created_at=sample_user.created_at,
         modified_at=sample_modified_at,
+        is_email_verified=sample_user.is_email_verified,
+        subscription_tier=sample_user.subscription_tier,
     )
 
 

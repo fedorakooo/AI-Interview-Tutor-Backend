@@ -34,3 +34,5 @@ class ExerciseAttempt(BaseModel):
     grading: GradingResult | None = None
     submitted_at: datetime
     graded_at: datetime | None = None
+    next_review_at: datetime | None = None
+    next_review_at: datetime | None = None

@@ -11,6 +11,11 @@ class RabbitMQSettings(BaseSettings):
 
     reset_password_queue_name: str = "reset-password-stream"
     reset_password_dlq_queue_name: str = "reset-password-stream.dlq"
+    email_verify_queue_name: str = "email-verify-stream"
+    email_verify_dlq_queue_name: str = "email-verify-stream.dlq"
+    notifications_queue_name: str = "notifications-stream"
+    notifications_dlq_queue_name: str = "notifications-stream.dlq"
+    practice_plan_ready_queue_name: str = "practice-plan-ready-stream"
 
     timeout: float = 30
 

@@ -1,7 +1,12 @@
 from langchain_core.prompts import ChatPromptTemplate
 from shared_models.practice.attempt import GradingResult
 from shared_models.practice.exercise import Exercise, ExerciseType, FlashcardRating
-from src.agent.prompts.templates import OPEN_QUESTION_GRADING_SYSTEM_PROMPT
+
+from src.agent.prompts.templates import (
+    CODE_REVIEW_GRADING_SYSTEM_PROMPT,
+    OPEN_QUESTION_GRADING_SYSTEM_PROMPT,
+    SCENARIO_GRADING_SYSTEM_PROMPT,
+)
 from src.config import settings
 from src.infrastructure.llm.factory import LLMFactory
 
@@ -15,7 +20,7 @@ FLASHCARD_SCORE_MAP = {
 class AnswerGrader:
     def __init__(self) -> None:
         self._llm = LLMFactory.create_grader_llm().with_structured_output(GradingResult)
-        self._prompt = ChatPromptTemplate.from_messages(
+        self._open_prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", OPEN_QUESTION_GRADING_SYSTEM_PROMPT),
                 (
@@ -25,9 +30,29 @@ class AnswerGrader:
                 ),
             ]
         )
+        self._code_review_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", CODE_REVIEW_GRADING_SYSTEM_PROMPT),
+                (
+                    "human",
+                    "Code ({language}):\n{code}\n\nPrompt: {prompt}\nRubric: {rubric}\n"
+                    "Reference: {reference}\nCandidate review: {answer}\nPass threshold: {threshold}",
+                ),
+            ]
+        )
+        self._scenario_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", SCENARIO_GRADING_SYSTEM_PROMPT),
+                (
+                    "human",
+                    "Scenario: {prompt}\nTasks: {tasks}\nRubric: {rubric}\nReference: {reference}\n"
+                    "Candidate answer: {answer}\nPass threshold: {threshold}",
+                ),
+            ]
+        )
 
     async def grade_open_question(self, exercise: Exercise, user_answer: str) -> GradingResult:
-        chain = self._prompt | self._llm
+        chain = self._open_prompt | self._llm
         result = await chain.ainvoke(
             {
                 "prompt": exercise.prompt,
@@ -37,6 +62,38 @@ class AnswerGrader:
                 "threshold": settings.practice_settings.grading_pass_threshold,
             }
         )
+        return self._normalize(result)
+
+    async def grade_code_review(self, exercise: Exercise, user_answer: str) -> GradingResult:
+        chain = self._code_review_prompt | self._llm
+        result = await chain.ainvoke(
+            {
+                "language": exercise.code_language or "unknown",
+                "code": exercise.code_snippet or "",
+                "prompt": exercise.prompt,
+                "rubric": "; ".join(exercise.rubric_bullets),
+                "reference": exercise.reference_answer or "",
+                "answer": user_answer,
+                "threshold": settings.practice_settings.grading_pass_threshold,
+            }
+        )
+        return self._normalize(result)
+
+    async def grade_scenario(self, exercise: Exercise, user_answer: str) -> GradingResult:
+        chain = self._scenario_prompt | self._llm
+        result = await chain.ainvoke(
+            {
+                "prompt": exercise.prompt,
+                "tasks": "; ".join(exercise.scenario_tasks or []),
+                "rubric": "; ".join(exercise.rubric_bullets),
+                "reference": exercise.reference_answer or "",
+                "answer": user_answer,
+                "threshold": settings.practice_settings.grading_pass_threshold,
+            }
+        )
+        return self._normalize(result)
+
+    def _normalize(self, result) -> GradingResult:
         grading = result if isinstance(result, GradingResult) else GradingResult.model_validate(result)
         grading.graded_by = "llm"
         if grading.is_correct is None:
@@ -93,4 +150,6 @@ class AnswerGrader:
             ExerciseType.MCQ_MULTI,
             ExerciseType.OPEN_QUESTION,
             ExerciseType.FLASHCARD,
+            ExerciseType.CODE_REVIEW,
+            ExerciseType.SCENARIO,
         }
