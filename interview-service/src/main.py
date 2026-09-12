@@ -15,6 +15,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+try:
+    from observability import (
+        CorrelationIdMiddleware,
+        MetricsMiddleware,
+        OpenTelemetryMiddleware,
+        init_langfuse,
+        init_otel,
+        init_sentry,
+        metrics_response,
+    )
+
+    app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(OpenTelemetryMiddleware)
+    app.add_middleware(MetricsMiddleware)
+    init_sentry("interview-service")
+    init_langfuse()
+    init_otel("interview-service")
+    HAS_OBSERVABILITY = True
+except ImportError:  # pragma: no cover
+    HAS_OBSERVABILITY = False
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -78,3 +99,10 @@ async def readiness(request: Request) -> JSONResponse:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"status": "not_ready", "checks": checks},
     )
+
+
+if HAS_OBSERVABILITY:
+
+    @app.get("/metrics")
+    async def metrics():
+        return metrics_response()
