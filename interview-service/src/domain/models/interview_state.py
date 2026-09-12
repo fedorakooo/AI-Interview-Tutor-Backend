@@ -14,6 +14,8 @@ class InterviewState(TypedDict):
     intermediate_stage: IntermediateInterviewStage
 
     is_answer_complete: bool
+    answer_score: float | None
+    answer_feedback: str | None
 
     soft_questions_turns: int
     soft_question_completed: int
@@ -22,3 +24,10 @@ class InterviewState(TypedDict):
     hard_question_completed: int
 
     interview_report: dict[str, Any] | None
+
+    interview_mode: str
+    company_preset: str | None
+    role_track: str | None
+    job_description: str | None
+    voice_enabled: bool
+    language: str

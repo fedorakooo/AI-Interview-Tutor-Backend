@@ -3,7 +3,8 @@ import random
 from langchain_core.prompts import ChatPromptTemplate
 from shared_models.cv.cv_data import CVData
 
-from src.agent.llm import llm
+from src.agent.llm import get_interview_llm
+from src.services.company_presets import preset_context
 from src.agent.prompts.hard_question import HARD_QUESTION_PROMPT_HUMAN, HARD_QUESTION_PROMPT_SYSTEM
 from src.agent.utils.format_messages import format_messages
 from src.domain.models.interview_state import InterviewState
@@ -37,12 +38,13 @@ async def ask_hard_question_node(state: InterviewState) -> InterviewState:
         ]
     )
 
-    chain = prompt | llm
+    chain = prompt | get_interview_llm("default")
 
     response = await chain.ainvoke(
         {
             "conversation_context": conversation_context,
             "cv_summary": CVData(**state["cv_data"]).model_dump_json(),
+            "company_preset_context": preset_context(state.get("company_preset")),
         }
     )
     content = response.content.strip()

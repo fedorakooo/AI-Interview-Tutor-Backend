@@ -9,5 +9,8 @@ Question: {question}
 Candidate's Answer: {answer}
 CV Context: {cv_context}
 
-Return ONLY one word: "complete" if the answer addresses the question at least partially, otherwise "incomplete".
+Return ONLY a JSON object (no markdown) with:
+- "complete": true if the answer addresses the question at least partially, else false
+- "score": number 0-10 for answer quality
+- "feedback": one concise sentence of constructive feedback for the candidate
 """
