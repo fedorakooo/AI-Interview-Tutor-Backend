@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "observability"
+version = "0.1.0"
+description = "Shared correlation IDs, metrics, and rate limiting for AI Interview Tutor"
+authors = ["AI Interview Tutor"]
+packages = [{ include = "observability" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+starlette = ">=0.27.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+pytest-asyncio = "^1.2.0"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
