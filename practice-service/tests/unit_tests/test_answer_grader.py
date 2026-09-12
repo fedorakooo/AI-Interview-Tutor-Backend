@@ -24,8 +24,8 @@ def _mock_grader_chain(result: GradingResult) -> AnswerGrader:
     grader = AnswerGrader.__new__(AnswerGrader)
     chain = MagicMock()
     chain.ainvoke = AsyncMock(return_value=result)
-    grader._prompt = MagicMock()
-    grader._prompt.__or__ = MagicMock(return_value=chain)
+    grader._open_prompt = MagicMock()
+    grader._open_prompt.__or__ = MagicMock(return_value=chain)
     grader._llm = MagicMock()
     return grader
 
