@@ -34,11 +34,15 @@ def wait_for_rabbitmq(
 @inject
 async def main(
     message_broker_consumer: MessageBrokerPort = Provide[Container.inbound_adapters.message_broker_consumer],
+    notification_email_consumer: MessageBrokerPort = Provide[Container.inbound_adapters.notification_email_consumer],
     mongo_client: MongoClient = Provide[Container.outbound_adapters.mongo_client],
 ) -> None:
     wait_for_rabbitmq()
 
-    await message_broker_consumer.process_messages()
+    await asyncio.gather(
+        message_broker_consumer.process_messages(),
+        notification_email_consumer.process_messages(),
+    )
 
     mongo_client.close()
 
