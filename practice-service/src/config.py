@@ -83,7 +83,14 @@ class PracticeSettings(BaseSettings):
     max_generation_retries: int = 2
     interview_report_retry_seconds: float = 2.0
     supported_exercise_types: list[str] = Field(
-        default_factory=lambda: ["mcq_single", "mcq_multi", "open_question", "flashcard"]
+        default_factory=lambda: [
+            "mcq_single",
+            "mcq_multi",
+            "open_question",
+            "flashcard",
+            "code_review",
+            "scenario",
+        ]
     )
 
     model_config = SettingsConfigDict(env_prefix="PRACTICE_", env_file=".env", extra="ignore")
@@ -118,6 +125,8 @@ class Settings(BaseSettings):
     )
     google_api_key: str = ""
     google_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gemini-2.0-flash"))
+    practice_grading_model: str = Field(default="", validation_alias="PRACTICE_GRADING_MODEL")
+    practice_report_model: str = Field(default="", validation_alias="PRACTICE_REPORT_MODEL")
 
     mongo_settings: MongoSettings = Field(default_factory=MongoSettings)
     rabbitmq_settings: RabbitMQSettings = Field(default_factory=RabbitMQSettings)
