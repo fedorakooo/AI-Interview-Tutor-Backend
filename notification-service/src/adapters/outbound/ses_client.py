@@ -17,12 +17,13 @@ class SESClient(AbstractSESClient):
         self.sender_email = sender_email
         self.logger = logger
 
-    def send_email(self, recipient: str, subject: str, body_text: str) -> bool:
+    def send_email(self, recipient: str, subject: str, body_text: str, *, html_body: str | None = None) -> bool:
         destination = {"ToAddresses": [recipient]}
+        body: dict = {"Text": {"Charset": "UTF-8", "Data": body_text}}
+        if html_body:
+            body["Html"] = {"Charset": "UTF-8", "Data": html_body}
         message = {
-            "Body": {
-                "Text": {"Charset": "UTF-8", "Data": body_text},
-            },
+            "Body": body,
             "Subject": {"Charset": "UTF-8", "Data": subject},
         }
 

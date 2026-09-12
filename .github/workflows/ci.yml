@@ -68,6 +68,12 @@ jobs:
           - name: shared-models
             working-directory: libs/shared_models
             pytest-args: tests
+          - name: jwt-handler
+            working-directory: libs/jwt_handler
+            pytest-args: tests
+          - name: observability
+            working-directory: libs/observability
+            pytest-args: tests
           - name: user-management
             working-directory: user-management-service
             pytest-args: tests/unit_tests

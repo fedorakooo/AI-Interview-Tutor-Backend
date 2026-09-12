@@ -282,6 +282,12 @@ class SubmitAttemptUseCase:
 
         now = datetime.now(UTC)
         grading = await self._grade_exercise(exercise, answer_payload)
+        next_review_at = None
+        if exercise.type == ExerciseType.FLASHCARD:
+            from src.application.services.spaced_repetition import compute_next_review
+
+            rating = answer_payload.get("flashcard_rating") or "good"
+            next_review_at = compute_next_review(str(rating), now)
         attempt = ExerciseAttempt(
             attempt_id=uuid4(),
             plan_id=plan_id,
@@ -294,6 +300,7 @@ class SubmitAttemptUseCase:
             grading=grading,
             submitted_at=now,
             graded_at=now,
+            next_review_at=next_review_at,
         )
         await self._attempts.upsert_attempt(attempt)
 
@@ -339,6 +346,22 @@ class SubmitAttemptUseCase:
                 raise InvalidAnswerFormatError("Flashcard requires flashcard_rating")
             rating = FlashcardRating(rating_value)
             return self._grader.grade_flashcard(rating)
+        if exercise.type == ExerciseType.CODE_REVIEW:
+            text_answer = answer_payload.get("text_answer")
+            if not isinstance(text_answer, str) or not text_answer.strip():
+                raise InvalidAnswerFormatError("Code review requires text_answer")
+            try:
+                return await self._grader.grade_code_review(exercise, text_answer)
+            except Exception as exc:
+                raise GradingFailedError() from exc
+        if exercise.type == ExerciseType.SCENARIO:
+            text_answer = answer_payload.get("text_answer")
+            if not isinstance(text_answer, str) or not text_answer.strip():
+                raise InvalidAnswerFormatError("Scenario requires text_answer")
+            try:
+                return await self._grader.grade_scenario(exercise, text_answer)
+            except Exception as exc:
+                raise GradingFailedError() from exc
         raise InvalidAnswerFormatError(f"Unsupported exercise type: {exercise.type.value}")
 
 

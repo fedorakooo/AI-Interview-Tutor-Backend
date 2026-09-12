@@ -5,7 +5,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 
-from src.agent.llm import llm
+from src.agent.llm import get_interview_llm
 from src.agent.prompts.question_router_decision import QUESTION_ROUTER_DECISION_PROMPT
 from src.agent.state.evaluate_answer import evaluate_answer_node
 from src.agent.state.generate_report import generate_report_node
@@ -50,7 +50,7 @@ async def question_router_decision(state: InterviewState) -> str:
 
     prompt = ChatPromptTemplate.from_template(QUESTION_ROUTER_DECISION_PROMPT)
 
-    chain = prompt | llm
+    chain = prompt | get_interview_llm("question_router")
     response = await chain.ainvoke(
         {
             "conversation_context": format_messages(state.get("messages", [])),

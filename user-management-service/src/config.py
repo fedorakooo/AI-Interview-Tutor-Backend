@@ -75,8 +75,29 @@ class FrontendSettings(BaseSettings):
     """Frontend URLs used in outbound notification payloads."""
 
     reset_password_url: str = "http://localhost:3000/reset-password"
+    verify_email_url: str = "http://localhost:3000/verify-email"
+    oauth_callback_url: str = "http://localhost:3000/oauth/callback"
 
     model_config = SettingsConfigDict(env_prefix="FRONTEND_", env_file=".env", extra="ignore")
+
+
+class OAuthSettings(BaseSettings):
+    """OAuth provider client credentials."""
+
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    github_oauth_client_id: str = ""
+    github_oauth_client_secret: str = ""
+
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def google_configured(self) -> bool:
+        return bool(self.google_oauth_client_id.strip() and self.google_oauth_client_secret.strip())
+
+    @property
+    def github_configured(self) -> bool:
+        return bool(self.github_oauth_client_id.strip() and self.github_oauth_client_secret.strip())
 
 
 class S3Settings(BaseSettings):
@@ -103,6 +124,8 @@ class RabbitMQSettings(BaseSettings):
     cv_analyzer_queue_name: str = "cv-analyze-stream"
     cv_analysis_results_queue_name: str = "cv-analysis-results"
     reset_password_queue_name: str = "reset-password-stream"
+    email_verify_queue_name: str = "email-verify-stream"
+    user_deleted_queue_name: str = "user-deleted-stream"
 
     timeout: float = 30
 
@@ -127,6 +150,7 @@ class Settings(BaseSettings):
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     frontend_settings: FrontendSettings = FrontendSettings()
+    oauth_settings: OAuthSettings = OAuthSettings()
     s3_settings: S3Settings = S3Settings()
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

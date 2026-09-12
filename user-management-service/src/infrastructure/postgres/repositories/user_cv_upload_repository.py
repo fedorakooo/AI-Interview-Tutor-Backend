@@ -57,3 +57,12 @@ class UserCVUploadPostgresRepository(IUserCVUploadRepository):
         result = await self._session.execute(stmt)
         orm = result.scalar_one_or_none()
         return orm.to_entity() if orm else None
+
+    async def list_by_user_id(self, user_id: UUID) -> list[UserCVUpload]:
+        stmt = (
+            select(UserCVUploadORM)
+            .where(UserCVUploadORM.user_id == user_id)
+            .order_by(UserCVUploadORM.created_at.desc())
+        )
+        result = await self._session.execute(stmt)
+        return [orm.to_entity() for orm in result.scalars().all()]

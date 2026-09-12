@@ -23,6 +23,8 @@ class UserMapper:
             is_blocked=user.is_blocked,
             created_at=user.created_at,
             modified_at=user.modified_at,
+            is_email_verified=user.is_email_verified,
+            subscription_tier=user.subscription_tier,
         )
 
     @staticmethod
@@ -47,6 +49,9 @@ class UserMapper:
             is_blocked=is_blocked,
             created_at=now,
             modified_at=now,
+            is_email_verified=False,
+            subscription_tier="free",
+            mfa_secret=None,
         )
 
     @staticmethod
@@ -70,4 +75,7 @@ class UserMapper:
             ),
             created_at=current_user.created_at,
             modified_at=now,
+            is_email_verified=current_user.is_email_verified,
+            subscription_tier=current_user.subscription_tier,
+            mfa_secret=current_user.mfa_secret,
         )

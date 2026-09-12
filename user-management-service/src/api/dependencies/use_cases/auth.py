@@ -1,4 +1,5 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends
 from jwt_handler.interfaces import (
@@ -14,9 +15,15 @@ from src.api.dependencies.auth import (
     get_token_handler,
 )
 from src.api.dependencies.database import get_unit_of_work
-from src.api.dependencies.rabbitmq import get_reset_password_producer
+from src.api.dependencies.rabbitmq import get_email_verify_producer, get_reset_password_producer
 from src.api.dependencies.redis import get_redis_client
 from src.application.use_cases.auth.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
+from src.application.use_cases.auth.email_verification_use_case import (
+    ConfirmEmailVerificationUseCase,
+    RequestEmailVerificationUseCase,
+)
+from src.application.use_cases.auth.logout_use_case import LogoutUseCase
+from src.application.use_cases.auth.mfa_use_case import SetupMfaUseCase, VerifyMfaUseCase
 from src.application.use_cases.auth.refresh_token_use_case import RefreshTokenUseCase
 from src.application.use_cases.auth.request_reset_password_use_case import RequestResetPasswordUseCase
 from src.application.use_cases.auth.user_login_use_case import LoginUserUseCase
@@ -69,6 +76,13 @@ def get_refresh_token_use_case(
     )
 
 
+def get_logout_use_case(
+    redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
+    token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+) -> LogoutUseCase:
+    return LogoutUseCase(redis_client=redis_client, token_handler=token_handler)
+
+
 def get_request_reset_password_use_case(
     uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
     token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
@@ -91,3 +105,34 @@ def get_confirm_reset_password_use_case(
         token_handler=token_handler,
         password_handler=password_handler,
     )
+
+
+def get_request_email_verification_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+    email_verify_producer: Annotated[IRabbitMQProducer, Depends(get_email_verify_producer)],
+) -> RequestEmailVerificationUseCase:
+    return RequestEmailVerificationUseCase(
+        uow=uow,
+        token_handler=token_handler,
+        email_verify_producer=email_verify_producer,
+    )
+
+
+def get_confirm_email_verification_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+) -> ConfirmEmailVerificationUseCase:
+    return ConfirmEmailVerificationUseCase(uow=uow, token_handler=token_handler)
+
+
+def get_setup_mfa_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+) -> SetupMfaUseCase:
+    return SetupMfaUseCase(uow=uow)
+
+
+def get_verify_mfa_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+) -> VerifyMfaUseCase:
+    return VerifyMfaUseCase(uow=uow)

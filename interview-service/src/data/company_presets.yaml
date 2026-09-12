@@ -1,0 +1,23 @@
+amazon_lp:
+  name: Amazon Leadership Principles
+  style: behavioral
+  focus: "Ownership, Customer Obsession, Bias for Action, Learn and Be Curious"
+  question_hints:
+    - "Ask for STAR stories tied to ownership and customer impact."
+    - "Probe trade-offs and metrics when the candidate claims results."
+
+google_behavioral:
+  name: Google Behavioral
+  style: behavioral
+  focus: "Googliness, collaboration, ambiguity, data-driven decisions"
+  question_hints:
+    - "Prefer questions about cross-functional influence and structured problem solving."
+    - "Follow up on how the candidate measured success."
+
+startup:
+  name: Startup Generalist
+  style: mixed
+  focus: "Breadth, scrappiness, end-to-end delivery, fast iteration"
+  question_hints:
+    - "Mix behavioral and technical depth with emphasis on shipping under constraints."
+    - "Ask about wearing multiple hats and prioritization."

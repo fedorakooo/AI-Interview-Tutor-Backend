@@ -123,6 +123,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
     allow_sample_cv_fallback: bool = False
+    billing_service_url: str = Field(default="", validation_alias="BILLING_SERVICE_URL")
+    sample_interview_rate_limit_per_hour: int = Field(default=5, validation_alias="SAMPLE_INTERVIEW_RATE_LIMIT")
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
 
     llm_provider: LLMProvider = LLMProvider.OPENAI
@@ -142,6 +144,19 @@ class Settings(BaseSettings):
     google_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gemini-2.0-flash"))
 
     interview_llm_temperature: float | None = Field(default=None, validation_alias="INTERVIEW_LLM__TEMPERATURE")
+    interview_grading_model: str = Field(default="", validation_alias="INTERVIEW_GRADING_MODEL")
+    interview_report_model: str = Field(default="", validation_alias="INTERVIEW_REPORT_MODEL")
+
+    @property
+    def model_routing(self) -> dict[str, dict[str, str | float]]:
+        """Env-based model routing: cheap models for grading, stronger for final report."""
+        routing: dict[str, dict[str, str | float]] = {}
+        if self.interview_grading_model:
+            routing["evaluate_answer"] = {"model": self.interview_grading_model, "temperature": 0.2}
+            routing["question_router"] = {"model": self.interview_grading_model, "temperature": 0.3}
+        if self.interview_report_model:
+            routing["generate_report"] = {"model": self.interview_report_model, "temperature": 0.4}
+        return routing
 
     logger_settings: LoggerSettings = LoggerSettings()
     app_settings: AppSettings = AppSettings()

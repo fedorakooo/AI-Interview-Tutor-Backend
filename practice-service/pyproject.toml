@@ -18,12 +18,13 @@ pydantic-settings = "^2.10.1"
 pyyaml = "^6.0.2"
 jwt-handler = { path = "../libs/jwt_handler", develop = true }
 shared-models = { path = "../libs/shared_models", develop = true }
+observability = { path = "../libs/observability", develop = true }
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
 pytest-asyncio = "^1.2.0"
-    mongomock-motor = "^0.0.35"
-    httpx = "^0.28.1"
+mongomock-motor = "^0.0.35"
+httpx = "^0.28.1"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

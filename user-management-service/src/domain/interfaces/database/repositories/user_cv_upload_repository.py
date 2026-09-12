@@ -24,3 +24,7 @@ class IUserCVUploadRepository(ABC):
     @abstractmethod
     async def get_by_user_and_correlation_id(self, user_id: UUID, correlation_id: UUID) -> UserCVUpload | None:
         pass
+
+    @abstractmethod
+    async def list_by_user_id(self, user_id: UUID) -> list[UserCVUpload]:
+        pass

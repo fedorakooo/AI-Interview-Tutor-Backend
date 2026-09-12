@@ -32,4 +32,5 @@ class UserPracticeProfile(BaseModel):
     current_streak_days: int = 0
     last_practice_date: date | None = None
     total_exercises_completed: int = 0
+    flashcard_due_count: int = 0
     updated_at: datetime

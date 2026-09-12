@@ -36,6 +36,8 @@ class UserReadDTO:
     is_blocked: bool
     created_at: datetime
     modified_at: datetime
+    is_email_verified: bool = False
+    subscription_tier: str = "free"
 
 
 @dataclass(frozen=True, slots=True)
