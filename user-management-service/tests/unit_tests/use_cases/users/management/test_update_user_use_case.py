@@ -53,6 +53,8 @@ class TestUpdateUserUseCase:
             is_blocked=True,
             created_at=sample_user.created_at,
             modified_at=sample_user.modified_at,
+            is_email_verified=sample_user.is_email_verified,
+            subscription_tier=sample_user.subscription_tier,
         )
         mock_user_repository.get_by_id.return_value = sample_user
         mock_user_repository.update.return_value = blocked_user
