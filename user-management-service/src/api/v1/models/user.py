@@ -64,6 +64,8 @@ class UserResponse(BaseModel):
     is_blocked: bool
     created_at: datetime
     modified_at: datetime
+    is_email_verified: bool = False
+    subscription_tier: str = "free"
 
     @classmethod
     def from_dto(cls, user: UserReadDTO) -> "UserResponse":
@@ -78,6 +80,8 @@ class UserResponse(BaseModel):
             modified_at=user.modified_at,
             role=user.role,
             is_blocked=user.is_blocked,
+            is_email_verified=user.is_email_verified,
+            subscription_tier=user.subscription_tier,
         )
 
 
