@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, OAuth2PasswordBearer
 from jwt_handler.interfaces import ITokenHandler
-from jwt_handler.value_objects import AccessTokenPayload
+from jwt_handler.value_objects import AccessTokenPayload, TokenType
 
 from src.api.dependencies.auth import get_token_handler
 from src.domain.exceptions.user_errors import UserBlockedError
@@ -26,6 +26,11 @@ async def get_access_token_payload(
 async def require_authenticated(
     payload: Annotated[AccessTokenPayload, Depends(get_access_token_payload)],
 ) -> AccessTokenPayload:
+    # Refresh credentials are only valid at the refresh endpoint.  Treating
+    # them as bearer credentials would extend their authority to every
+    # protected API.
+    if payload.get("type") != TokenType.ACCESS:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid access token")
     if payload.get("is_blocked"):
         raise UserBlockedError(payload["username"])
     return payload
