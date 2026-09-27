@@ -24,3 +24,7 @@ class IVacancyRepository(ABC):
     @abstractmethod
     async def update(self, vacancy: Vacancy) -> Vacancy:
         pass
+
+    @abstractmethod
+    async def update_template(self, template: AssessmentTemplate) -> AssessmentTemplate:
+        pass
