@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 from src.domain.interfaces.database.repositories.user_cv_upload_repository import IUserCVUploadRepository
+from src.domain.interfaces.database.repositories.organization_repository import IOrganizationRepository
 from src.domain.interfaces.database.repositories.user_repository import (
     IUserRepository,
 )
@@ -37,4 +38,10 @@ class IUnitOfWork(ABC):
     @abstractmethod
     def user_cv_upload_repository(self) -> IUserCVUploadRepository:
         """Provides access to the CV upload repository."""
+        pass
+
+    @property
+    @abstractmethod
+    def organization_repository(self) -> IOrganizationRepository:
+        """Provides access to organization and membership persistence."""
         pass

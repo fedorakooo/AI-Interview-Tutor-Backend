@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.interfaces.database.repositories.user_cv_upload_repository import IUserCVUploadRepository
+from src.domain.interfaces.database.repositories.organization_repository import IOrganizationRepository
 from src.domain.interfaces.database.repositories.user_repository import IUserRepository
 from src.domain.interfaces.database.uow import IUnitOfWork
 
@@ -13,10 +14,12 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         session: AsyncSession,
         user_repository: IUserRepository,
         user_cv_upload_repository: IUserCVUploadRepository,
+        organization_repository: IOrganizationRepository,
     ):
         self._session = session
         self._user_repository = user_repository
         self._user_cv_upload_repository = user_cv_upload_repository
+        self._organization_repository = organization_repository
 
     async def __aenter__(self) -> "SqlAlchemyUnitOfWork":
         return self
@@ -47,3 +50,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     @property
     def user_cv_upload_repository(self) -> IUserCVUploadRepository:
         return self._user_cv_upload_repository
+
+    @property
+    def organization_repository(self) -> IOrganizationRepository:
+        return self._organization_repository

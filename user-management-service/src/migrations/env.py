@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 from src.config import settings
 from src.infrastructure.postgres.database import Base
 from src.infrastructure.postgres.schemas.user import UserORM  # noqa
+from src.infrastructure.postgres.schemas.organization import OrganizationMemberORM, OrganizationORM  # noqa
 
 config = context.config
 

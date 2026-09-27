@@ -12,11 +12,13 @@ from sqlalchemy.ext.asyncio import (
 from src.config import settings
 from src.domain.interfaces.database.repositories.user_cv_upload_repository import IUserCVUploadRepository
 from src.domain.interfaces.database.repositories.user_repository import IUserRepository
+from src.domain.interfaces.database.repositories.organization_repository import IOrganizationRepository
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.postgres.repositories.user_cv_upload_repository import UserCVUploadPostgresRepository
 from src.infrastructure.postgres.repositories.user_repository import (
     UserPostgresRepository,
 )
+from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
 
 
@@ -62,13 +64,21 @@ def get_user_cv_upload_repository(
     return UserCVUploadPostgresRepository(session)
 
 
+def get_organization_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> IOrganizationRepository:
+    return OrganizationPostgresRepository(session)
+
+
 def get_unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_repository: Annotated[IUserRepository, Depends(get_user_repository)],
     user_cv_upload_repository: Annotated[IUserCVUploadRepository, Depends(get_user_cv_upload_repository)],
+    organization_repository: Annotated[IOrganizationRepository, Depends(get_organization_repository)],
 ) -> IUnitOfWork:
     return SqlAlchemyUnitOfWork(
         session=session,
         user_repository=user_repository,
         user_cv_upload_repository=user_cv_upload_repository,
+        organization_repository=organization_repository,
     )
