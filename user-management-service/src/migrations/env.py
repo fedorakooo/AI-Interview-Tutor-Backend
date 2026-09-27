@@ -6,6 +6,7 @@ from src.config import settings
 from src.infrastructure.postgres.database import Base
 from src.infrastructure.postgres.schemas.user import UserORM  # noqa
 from src.infrastructure.postgres.schemas.organization import OrganizationMemberORM, OrganizationORM  # noqa
+from src.infrastructure.postgres.schemas.vacancy import AssessmentTemplateORM, VacancyORM  # noqa
 
 config = context.config
 
