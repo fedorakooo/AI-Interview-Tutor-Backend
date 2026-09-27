@@ -1,5 +1,6 @@
 from src.api.dependencies.database import get_async_engine
 from src.infrastructure.postgres.database import Base
+from src.infrastructure.postgres import schemas as _schemas  # noqa: F401
 
 engine = get_async_engine()
 
