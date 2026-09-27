@@ -7,12 +7,15 @@ from pydantic import BaseModel, EmailStr, Field
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
-from src.api.security import require_authenticated
+from src.api.security import require_authenticated, require_org_role
 from src.application.use_cases.organizations import (
     AddOrganizationMemberUseCase,
+    ChangeOrganizationMemberRoleUseCase,
     CreateOrganizationUseCase,
+    DeactivateOrganizationMemberUseCase,
     ListMyOrganizationsUseCase,
 )
+from src.domain.entities.organization import OrganizationMember
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
 
@@ -30,6 +33,10 @@ class OrgMemberCreate(BaseModel):
 
 class OrgMemberView(BaseModel):
     user_id: UUID
+    role: OrganizationRole
+
+
+class OrgMemberRoleUpdate(BaseModel):
     role: OrganizationRole
 
 
@@ -88,6 +95,7 @@ async def add_member(
     body: OrgMemberCreate,
     payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
     uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN))],
 ) -> OrgMemberView:
     _require_feature()
     member = await AddOrganizationMemberUseCase(uow)(
@@ -96,4 +104,33 @@ async def add_member(
         member_email=str(body.email),
         role=body.role,
     )
+    return OrgMemberView(user_id=member.user_id, role=member.role)
+
+
+@router.patch("/{org_id}/members/{member_user_id}", response_model=OrgMemberView)
+async def change_member_role(
+    org_id: UUID,
+    member_user_id: UUID,
+    body: OrgMemberRoleUpdate,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN))],
+) -> OrgMemberView:
+    _require_feature()
+    member = await ChangeOrganizationMemberRoleUseCase(uow)(
+        org_id, UUID(payload["id"]), member_user_id, body.role
+    )
+    return OrgMemberView(user_id=member.user_id, role=member.role)
+
+
+@router.delete("/{org_id}/members/{member_user_id}", response_model=OrgMemberView)
+async def deactivate_member(
+    org_id: UUID,
+    member_user_id: UUID,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN))],
+) -> OrgMemberView:
+    _require_feature()
+    member = await DeactivateOrganizationMemberUseCase(uow)(org_id, UUID(payload["id"]), member_user_id)
     return OrgMemberView(user_id=member.user_id, role=member.role)

@@ -3,7 +3,12 @@ from uuid import uuid4
 
 import pytest
 
-from src.application.use_cases.organizations import AddOrganizationMemberUseCase, CreateOrganizationUseCase
+from src.application.use_cases.organizations import (
+    AddOrganizationMemberUseCase,
+    ChangeOrganizationMemberRoleUseCase,
+    CreateOrganizationUseCase,
+    DeactivateOrganizationMemberUseCase,
+)
 from src.domain.exceptions.organization_errors import OrganizationAccessError
 from src.domain.value_objects.organization_role import OrganizationRole
 
@@ -26,6 +31,10 @@ class FakeOrganizationRepository:
 
     async def get_member(self, organization_id, user_id):
         return self.members.get((organization_id, user_id))
+
+    async def update_member(self, member):
+        self.members[(member.organization_id, member.user_id)] = member
+        return member
 
 
 class FakeUserRepository:
@@ -80,3 +89,25 @@ async def test_only_org_admin_can_add_a_member():
         await AddOrganizationMemberUseCase(uow)(
             organization_id, recruiter_id, "candidate@example.com", OrganizationRole.HIRING_MANAGER
         )
+
+
+@pytest.mark.asyncio
+async def test_admin_cannot_remove_or_demote_themself():
+    organization_id, admin_id = uuid4(), uuid4()
+    organizations = FakeOrganizationRepository()
+    await organizations.create_member(
+        SimpleNamespace(
+            organization_id=organization_id,
+            user_id=admin_id,
+            role=OrganizationRole.ADMIN,
+            status="active",
+        )
+    )
+    uow = FakeUow(organizations, FakeUserRepository({}))
+
+    with pytest.raises(OrganizationAccessError):
+        await ChangeOrganizationMemberRoleUseCase(uow)(
+            organization_id, admin_id, admin_id, OrganizationRole.RECRUITER
+        )
+    with pytest.raises(OrganizationAccessError):
+        await DeactivateOrganizationMemberUseCase(uow)(organization_id, admin_id, admin_id)

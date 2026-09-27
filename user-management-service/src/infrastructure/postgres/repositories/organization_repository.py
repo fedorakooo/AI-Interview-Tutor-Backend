@@ -68,6 +68,12 @@ class OrganizationPostgresRepository(IOrganizationRepository):
         )
         return [member.to_entity() for member in result.scalars()]
 
+    async def update_member(self, member: OrganizationMember) -> OrganizationMember:
+        orm = OrganizationMemberORM.from_entity(member)
+        updated = await self._session.merge(orm)
+        await self._flush(updated)
+        return updated.to_entity()
+
     async def _flush(self, orm: OrganizationORM | OrganizationMemberORM) -> None:
         try:
             await self._session.flush()

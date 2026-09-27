@@ -28,3 +28,7 @@ class IOrganizationRepository(ABC):
     @abstractmethod
     async def list_members(self, organization_id: UUID) -> list[OrganizationMember]:
         pass
+
+    @abstractmethod
+    async def update_member(self, member: OrganizationMember) -> OrganizationMember:
+        pass

@@ -47,3 +47,46 @@ class AddOrganizationMemberUseCase:
             return await self._uow.organization_repository.create_member(
                 OrganizationMember(organization_id, user.id, role, invited_by=actor_user_id)
             )
+
+
+class ChangeOrganizationMemberRoleUseCase:
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(
+        self, organization_id: UUID, actor_user_id: UUID, member_user_id: UUID, role: OrganizationRole
+    ) -> OrganizationMember:
+        async with self._uow:
+            await _require_active_admin(self._uow, organization_id, actor_user_id)
+            member = await self._uow.organization_repository.get_member(organization_id, member_user_id)
+            if member is None:
+                raise NotFoundError("Organization member not found")
+            if member.user_id == actor_user_id and role != OrganizationRole.ADMIN:
+                raise OrganizationAccessError()
+            member.role = role
+            return await self._uow.organization_repository.update_member(member)
+
+
+class DeactivateOrganizationMemberUseCase:
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, organization_id: UUID, actor_user_id: UUID, member_user_id: UUID) -> OrganizationMember:
+        async with self._uow:
+            await _require_active_admin(self._uow, organization_id, actor_user_id)
+            member = await self._uow.organization_repository.get_member(organization_id, member_user_id)
+            if member is None:
+                raise NotFoundError("Organization member not found")
+            if member.user_id == actor_user_id:
+                raise OrganizationAccessError()
+            member.status = "inactive"
+            return await self._uow.organization_repository.update_member(member)
+
+
+async def _require_active_admin(uow: IUnitOfWork, organization_id: UUID, user_id: UUID) -> OrganizationMember:
+    membership = await uow.organization_repository.get_member(organization_id, user_id)
+    if membership is None:
+        raise NotFoundError("Organization not found")
+    if membership.status != "active" or membership.role != OrganizationRole.ADMIN:
+        raise OrganizationAccessError()
+    return membership
