@@ -21,6 +21,8 @@ from src.infrastructure.postgres.repositories.user_repository import (
 )
 from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
 from src.infrastructure.postgres.repositories.vacancy_repository import VacancyPostgresRepository
+from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
+from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
 
 
@@ -76,12 +78,17 @@ def get_vacancy_repository(session: Annotated[AsyncSession, Depends(get_session)
     return VacancyPostgresRepository(session)
 
 
+def get_assessment_repository(session: Annotated[AsyncSession, Depends(get_session)]) -> IAssessmentRepository:
+    return AssessmentPostgresRepository(session)
+
+
 def get_unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_repository: Annotated[IUserRepository, Depends(get_user_repository)],
     user_cv_upload_repository: Annotated[IUserCVUploadRepository, Depends(get_user_cv_upload_repository)],
     organization_repository: Annotated[IOrganizationRepository, Depends(get_organization_repository)],
     vacancy_repository: Annotated[IVacancyRepository, Depends(get_vacancy_repository)],
+    assessment_repository: Annotated[IAssessmentRepository, Depends(get_assessment_repository)],
 ) -> IUnitOfWork:
     return SqlAlchemyUnitOfWork(
         session=session,
@@ -89,4 +96,5 @@ def get_unit_of_work(
         user_cv_upload_repository=user_cv_upload_repository,
         organization_repository=organization_repository,
         vacancy_repository=vacancy_repository,
+        assessment_repository=assessment_repository,
     )

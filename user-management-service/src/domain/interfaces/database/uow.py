@@ -6,6 +6,7 @@ from src.domain.interfaces.database.repositories.vacancy_repository import IVaca
 from src.domain.interfaces.database.repositories.user_repository import (
     IUserRepository,
 )
+from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
 
 
 class IUnitOfWork(ABC):
@@ -50,4 +51,9 @@ class IUnitOfWork(ABC):
     @property
     @abstractmethod
     def vacancy_repository(self) -> IVacancyRepository:
+        pass
+
+    @property
+    @abstractmethod
+    def assessment_repository(self) -> IAssessmentRepository:
         pass

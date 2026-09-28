@@ -52,7 +52,8 @@ class ActivateVacancyUseCase:
             vacancy = await self._uow.vacancy_repository.get_by_id_and_organization_id(vacancy_id, organization_id)
             if vacancy is None:
                 raise NotFoundError("Vacancy not found")
-            template = await self._uow.vacancy_repository.get_template(vacancy_id, 1)
+            version = vacancy.active_template_version or 1
+            template = await self._uow.vacancy_repository.get_template(vacancy_id, version)
             if template is None:
                 raise NotFoundError("Assessment template not found")
             template.status = TemplateStatus.ACTIVE

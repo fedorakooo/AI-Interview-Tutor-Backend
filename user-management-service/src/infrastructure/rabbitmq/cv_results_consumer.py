@@ -9,6 +9,9 @@ from src.config import settings
 from src.domain.entities.user_cv_upload import UserCVUpload
 from src.infrastructure.postgres.repositories.user_cv_upload_repository import UserCVUploadPostgresRepository
 from src.infrastructure.postgres.repositories.user_repository import UserPostgresRepository
+from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
+from src.infrastructure.postgres.repositories.vacancy_repository import VacancyPostgresRepository
+from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
 
 
@@ -55,6 +58,9 @@ class CVResultsConsumer:
                 session=session,
                 user_repository=user_repository,
                 user_cv_upload_repository=cv_repository,
+                organization_repository=OrganizationPostgresRepository(session),
+                vacancy_repository=VacancyPostgresRepository(session),
+                assessment_repository=AssessmentPostgresRepository(session),
             )
 
             async with uow:
