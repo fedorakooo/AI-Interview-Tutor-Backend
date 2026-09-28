@@ -28,3 +28,7 @@ class IVacancyRepository(ABC):
     @abstractmethod
     async def update_template(self, template: AssessmentTemplate) -> AssessmentTemplate:
         pass
+
+    @abstractmethod
+    async def create_template(self, template: AssessmentTemplate) -> AssessmentTemplate:
+        pass

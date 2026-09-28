@@ -44,3 +44,10 @@ class VacancyPostgresRepository(IVacancyRepository):
         await self._session.flush()
         await self._session.refresh(updated)
         return updated.to_entity()
+
+    async def create_template(self, template: AssessmentTemplate) -> AssessmentTemplate:
+        orm = AssessmentTemplateORM.from_entity(template)
+        self._session.add(orm)
+        await self._session.flush()
+        await self._session.refresh(orm)
+        return orm.to_entity()
