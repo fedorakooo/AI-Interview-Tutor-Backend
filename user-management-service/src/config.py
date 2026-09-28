@@ -100,6 +100,15 @@ class OAuthSettings(BaseSettings):
         return bool(self.github_oauth_client_id.strip() and self.github_oauth_client_secret.strip())
 
 
+class AssessmentSettings(BaseSettings):
+    """Secrets and fixed policy for the employer assessment flow."""
+
+    invitation_token_pepper: str = ""
+    invitation_ttl_hours: int = 48
+
+    model_config = SettingsConfigDict(env_prefix="ASSESSMENT_", env_file=".env", extra="ignore")
+
+
 class S3Settings(BaseSettings):
     """S3 connection settings."""
 
@@ -151,6 +160,7 @@ class Settings(BaseSettings):
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     frontend_settings: FrontendSettings = FrontendSettings()
     oauth_settings: OAuthSettings = OAuthSettings()
+    assessment_settings: AssessmentSettings = AssessmentSettings()
     s3_settings: S3Settings = S3Settings()
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
