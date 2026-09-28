@@ -32,6 +32,7 @@ def get_candidate_attempt_token_handler() -> ICandidateAttemptTokenHandler:
     return CandidateAttemptTokenHandler(
         public_key=settings.jwt_settings.public_key,
         private_key=settings.jwt_settings.private_key,
+        expire_minutes=settings.assessment_settings.candidate_attempt_token_expire_minutes,
     )
 
 

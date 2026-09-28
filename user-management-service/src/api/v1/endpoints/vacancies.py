@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from jwt_handler.value_objects import AccessTokenPayload
 from pydantic import BaseModel, Field
-from shared_models.assessment.contracts import AssessmentTemplateSnapshot, VacancyStatus
+from shared_models.assessment.contracts import AssessmentTemplateSnapshot, HumanDecisionType, VacancyStatus
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
@@ -23,9 +23,11 @@ from src.domain.entities.organization import OrganizationMember
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
 from src.application.use_cases.assessments import CreateInvitationUseCase, RevokeInvitationUseCase
+from src.application.use_cases.employer_assessment import GetAuthorizedReportUseCase, ListCandidatesUseCase, RecordHumanDecisionUseCase
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 
 router = APIRouter(prefix="/organizations/{organization_id}/vacancies", tags=["Vacancies"])
+assessment_router = APIRouter(prefix="/organizations/{organization_id}/attempts", tags=["Assessments"])
 
 
 class VacancyCreate(BaseModel):
@@ -60,6 +62,31 @@ class InvitationView(BaseModel):
     status: str
     expires_at: datetime
     attempts_started: int
+
+
+class CandidateAttemptView(BaseModel):
+    id: UUID
+    status: str
+    started_at: datetime | None
+    completed_at: datetime | None
+    report_available: bool
+
+
+class ReportView(BaseModel):
+    attempt_id: UUID
+    status: str
+    report_reference: str
+    report_version: int | None
+
+
+class HumanDecisionRequest(BaseModel):
+    decision: HumanDecisionType
+    private_note: str | None = Field(default=None, max_length=4_000)
+
+
+class HumanDecisionView(BaseModel):
+    decision: HumanDecisionType
+    version: int
 
 
 def _require_feature() -> None:
@@ -197,3 +224,39 @@ async def revoke_invitation(
     _require_feature()
     invitation = await RevokeInvitationUseCase(uow)(organization_id, invitation_id, UUID(payload["id"]))
     return InvitationView(id=invitation.id, status=invitation.status, expires_at=invitation.expires_at, attempts_started=invitation.attempts_started)
+
+
+@router.get("/{vacancy_id}/candidates", response_model=list[CandidateAttemptView])
+async def list_candidates(
+    organization_id: UUID, vacancy_id: UUID, uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN, OrganizationRole.RECRUITER, OrganizationRole.HIRING_MANAGER))],
+    limit: int = 50, offset: int = 0,
+) -> list[CandidateAttemptView]:
+    _require_feature()
+    attempts = await ListCandidatesUseCase(uow)(organization_id, vacancy_id, min(limit, 100), max(offset, 0))
+    return [CandidateAttemptView(id=item.id, status=item.status, started_at=item.started_at, completed_at=item.completed_at, report_available=bool(item.report_reference)) for item in attempts]
+
+
+@assessment_router.get("/{attempt_id}/report", response_model=ReportView)
+async def get_report(
+    organization_id: UUID, attempt_id: UUID, uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN, OrganizationRole.RECRUITER, OrganizationRole.HIRING_MANAGER))],
+) -> ReportView:
+    _require_feature()
+    attempt = await GetAuthorizedReportUseCase(uow)(organization_id, attempt_id, UUID(payload["id"]))
+    if not attempt.report_reference:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report unavailable")
+    return ReportView(attempt_id=attempt.id, status=attempt.status, report_reference=attempt.report_reference, report_version=attempt.report_version)
+
+
+@assessment_router.post("/{attempt_id}/decision", response_model=HumanDecisionView)
+async def record_decision(
+    organization_id: UUID, attempt_id: UUID, body: HumanDecisionRequest,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN, OrganizationRole.RECRUITER, OrganizationRole.HIRING_MANAGER))],
+) -> HumanDecisionView:
+    _require_feature()
+    recorded = await RecordHumanDecisionUseCase(uow)(organization_id, attempt_id, body.decision, body.private_note, UUID(payload["id"]))
+    return HumanDecisionView(decision=HumanDecisionType(recorded.decision), version=recorded.version)

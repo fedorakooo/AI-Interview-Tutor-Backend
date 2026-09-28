@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 from shared_models.assessment.contracts import InvitationStatus
@@ -10,10 +10,14 @@ from shared_models.feature_flags.flags import feature_enabled
 from src.api.dependencies.assessment import get_invitation_token_handler
 from src.api.dependencies.auth import get_candidate_attempt_token_handler
 from src.api.dependencies.database import get_unit_of_work
-from src.application.use_cases.assessments import AssessmentFlowError, PublicInvitationUseCase
+from src.api.dependencies.rabbitmq import get_cv_analyzer_producer
+from src.api.dependencies.s3 import get_s3_client
+from src.application.use_cases.assessments import AssessmentFlowError, CompleteAttemptUseCase, PublicInvitationUseCase, UploadAttemptCVUseCase
 from src.domain.interfaces.auth.candidate_attempt_token_handler import ICandidateAttemptTokenHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
+from src.domain.interfaces.rabbitmq.rabbitmq_producer import IRabbitMQProducer
+from src.domain.interfaces.storage.s3_client import IS3Client
 
 router = APIRouter(prefix="/api/public", tags=["Candidate assessment"])
 candidate_bearer = HTTPBearer()
@@ -40,6 +44,16 @@ class StartAttemptResponse(BaseModel):
 class AttemptProgress(BaseModel):
     status: str
     cv_status: str | None = None
+
+
+class AttemptCVResponse(BaseModel):
+    correlation_id: UUID
+    status: str
+
+
+class CompleteAttemptRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128)
+    report_reference: str = Field(min_length=1, max_length=512)
 
 
 def _enabled() -> None:
@@ -98,4 +112,42 @@ async def get_attempt_progress(
         attempt = await uow.assessment_repository.get_attempt(attempt_id)
     if attempt is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt unavailable")
-    return AttemptProgress(status=attempt.status, cv_status="pending" if attempt.status == "created" else None)
+    async with uow:
+        upload = await uow.assessment_repository.get_cv_upload_for_attempt(attempt_id)
+    return AttemptProgress(status=attempt.status, cv_status=upload.status if upload else None)
+
+
+@router.post("/attempts/{attempt_id}/cv", response_model=AttemptCVResponse, status_code=status.HTTP_202_ACCEPTED)
+async def upload_attempt_cv(
+    attempt_id: UUID,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(candidate_bearer)],
+    token_handler: Annotated[ICandidateAttemptTokenHandler, Depends(get_candidate_attempt_token_handler)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    s3_client: Annotated[IS3Client, Depends(get_s3_client)],
+    producer: Annotated[IRabbitMQProducer, Depends(get_cv_analyzer_producer)],
+    file: UploadFile = File(...),
+) -> AttemptCVResponse:
+    _enabled()
+    try:
+        token_handler.verify(credentials.credentials, str(attempt_id))
+        upload = await UploadAttemptCVUseCase(uow, s3_client, producer)(attempt_id, await file.read(), file.filename or "resume.pdf", file.content_type or "application/pdf")
+    except AssessmentFlowError as exc:
+        raise _public_error() from exc
+    return AttemptCVResponse(correlation_id=upload.correlation_id, status=upload.status)
+
+
+@router.post("/attempts/{attempt_id}/complete", response_model=AttemptProgress)
+async def complete_attempt(
+    attempt_id: UUID,
+    body: CompleteAttemptRequest,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(candidate_bearer)],
+    token_handler: Annotated[ICandidateAttemptTokenHandler, Depends(get_candidate_attempt_token_handler)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+) -> AttemptProgress:
+    _enabled()
+    try:
+        token_handler.verify(credentials.credentials, str(attempt_id))
+        attempt = await CompleteAttemptUseCase(uow)(attempt_id, body.session_id, body.report_reference)
+    except AssessmentFlowError as exc:
+        raise _public_error() from exc
+    return AttemptProgress(status=attempt.status, cv_status="completed")

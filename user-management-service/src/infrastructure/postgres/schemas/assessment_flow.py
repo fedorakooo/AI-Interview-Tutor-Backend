@@ -46,10 +46,36 @@ class CandidateAttemptORM(Base):
     status: Mapped[str] = mapped_column(String(24), default="created")
     cv_correlation_id: Mapped[UUID | None] = mapped_column(unique=True, nullable=True)
     interview_session_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # The report itself remains owned by Interview Service.  Keeping only an
+    # opaque reference here lets this service make the authorization decision.
+    report_reference: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    report_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
+
+
+class AssessmentCVUploadORM(Base):
+    """CV owned by an anonymous assessment attempt, not by a platform user."""
+
+    __tablename__ = "assessment_cv_uploads"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(
+        ForeignKey("candidate_attempts.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    correlation_id: Mapped[UUID] = mapped_column(unique=True, index=True)
+    s3_object_key: Mapped[str] = mapped_column(String(512))
+    original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    mongo_document_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=text("TIMEZONE('utc', now())"), onupdate=text("TIMEZONE('utc', now())")
+    )
 
 
 class HumanDecisionORM(Base):

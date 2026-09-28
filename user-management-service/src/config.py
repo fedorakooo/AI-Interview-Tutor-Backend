@@ -105,6 +105,7 @@ class AssessmentSettings(BaseSettings):
 
     invitation_token_pepper: str = ""
     invitation_ttl_hours: int = 48
+    candidate_attempt_token_expire_minutes: int = 240
 
     model_config = SettingsConfigDict(env_prefix="ASSESSMENT_", env_file=".env", extra="ignore")
 

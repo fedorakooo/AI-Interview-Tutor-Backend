@@ -12,7 +12,7 @@ from src.api.v1.endpoints.oauth import router as oauth_router
 from src.api.v1.endpoints.orgs import router as orgs_router
 from src.api.v1.endpoints.privacy import router as privacy_router
 from src.api.v1.endpoints.user_management import router as user_management_router
-from src.api.v1.endpoints.vacancies import router as vacancies_router
+from src.api.v1.endpoints.vacancies import assessment_router, router as vacancies_router
 
 router = APIRouter(prefix="/api/v1")
 
@@ -29,7 +29,7 @@ router.include_router(admin_ops_router)
 router.include_router(orgs_router)
 router.include_router(growth_router)
 router.include_router(vacancies_router)
-
+router.include_router(assessment_router)
 
 
 
