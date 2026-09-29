@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from shared_models.assessment.contracts import AttemptStatus, InvitationStatus, VacancyStatus
+from shared_models.assessment.contracts import AssessmentCompleted, AssessmentContext, AttemptStatus, EmployerNotificationRequested, InvitationStatus, VacancyStatus
 from shared_models.messaging.common import AnalysisStatus
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
 
@@ -10,7 +10,7 @@ from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.postgres.schemas.assessment_flow import CandidateAttemptORM, CandidateInvitationORM
 from src.infrastructure.postgres.schemas.assessment_flow import AuditLogORM
-from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM
+from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM
 
 
 class AssessmentFlowError(Exception):
@@ -187,15 +187,103 @@ class UploadAttemptCVUseCase:
         return upload
 
 
-class CompleteAttemptUseCase:
-    def __init__(self, uow: IUnitOfWork): self._uow = uow
+class GetAssessmentContextUseCase:
+    """Build the server-owned assessment context for Interview Service.
 
-    async def __call__(self, attempt_id: UUID, session_id: str, report_reference: str) -> CandidateAttemptORM:
+    Browser data is never accepted as a source of vacancy/template context.
+    """
+
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, attempt_id: UUID) -> AssessmentContext:
         async with self._uow:
-            attempt = await self._uow.assessment_repository.get_attempt(attempt_id)
-            if attempt is None or attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value, AttemptStatus.COMPLETED.value}:
+            row = await self._uow.assessment_repository.get_attempt_with_invitation(attempt_id)
+            if row is None:
+                raise NotFoundError("Assessment attempt not found")
+            attempt, invitation = row
+            if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}:
                 raise AssessmentFlowError()
-            if attempt.status != AttemptStatus.COMPLETED.value:
-                attempt.status, attempt.completed_at = AttemptStatus.COMPLETED.value, utcnow()
-                attempt.interview_session_id, attempt.report_reference, attempt.report_version = session_id, report_reference, 1
+            vacancy = await self._uow.vacancy_repository.get_by_id_and_organization_id(
+                invitation.vacancy_id, invitation.organization_id
+            )
+            template = await self._uow.vacancy_repository.get_template(
+                invitation.vacancy_id, invitation.template_version
+            )
+            if vacancy is None or vacancy.status != VacancyStatus.ACTIVE or template is None or attempt.cv_correlation_id is None:
+                raise AssessmentFlowError()
+            return AssessmentContext(
+                attempt_id=attempt.id,
+                organization_id=invitation.organization_id,
+                vacancy_id=invitation.vacancy_id,
+                invitation_id=invitation.id,
+                template_version=invitation.template_version,
+                template=template.snapshot,
+                cv_correlation_id=attempt.cv_correlation_id,
+                candidate_display_name=attempt.candidate_display_name,
+            )
+
+
+class RegisterAssessmentCompletionUseCase:
+    """Register only a trusted Interview Service completion event exactly once."""
+
+    consumer_name = "user-management.assessment-completed.v1"
+
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, event: AssessmentCompleted) -> CandidateAttemptORM | None:
+        async with self._uow:
+            if not await self._uow.assessment_repository.claim_event(self.consumer_name, event.event_id):
+                return None
+            row = await self._uow.assessment_repository.get_attempt_with_invitation(event.attempt_id)
+            if row is None:
+                raise AssessmentFlowError()
+            attempt, invitation = row
+            if (
+                invitation.id != event.invitation_id
+                or invitation.organization_id != event.organization_id
+                or invitation.vacancy_id != event.vacancy_id
+            ):
+                raise AssessmentFlowError()
+            if attempt.status == AttemptStatus.COMPLETED.value:
+                if attempt.interview_session_id != event.session_id or attempt.report_reference != event.report_reference:
+                    raise AssessmentFlowError()
+                return attempt
+            if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}:
+                raise AssessmentFlowError()
+            attempt.status = AttemptStatus.COMPLETED.value
+            attempt.completed_at = utcnow()
+            attempt.interview_session_id = event.session_id
+            attempt.report_reference = event.report_reference
+            attempt.report_version = event.report_version
+            invitation.status = InvitationStatus.COMPLETED.value
+            notification = EmployerNotificationRequested(
+                event_id=uuid4(),
+                occurred_at=utcnow(),
+                correlation_id=event.correlation_id,
+                organization_id=invitation.organization_id,
+                vacancy_id=invitation.vacancy_id,
+                invitation_id=invitation.id,
+                attempt_id=attempt.id,
+                report_version=event.report_version,
+            )
+            # This row is committed with the report reference.  A dispatcher
+            # publishes it later, so a broker outage cannot lose the request.
+            await self._uow.assessment_repository.create_outbox_message(
+                AssessmentOutboxORM(
+                    id=uuid4(), event_id=notification.event_id,
+                    event_type="employer_notification_requested.v1",
+                    payload=notification.model_dump(mode="json"),
+                )
+            )
+            await self._uow.assessment_repository.create_audit_entry(
+                AuditLogORM(
+                    id=uuid4(), actor_type="service", actor_id=None,
+                    action="assessment.completed", organization_id=invitation.organization_id,
+                    vacancy_id=invitation.vacancy_id, invitation_id=invitation.id,
+                    attempt_id=attempt.id,
+                    after={"session_id": event.session_id, "report_version": event.report_version, "event_id": str(event.event_id)},
+                )
+            )
             return attempt

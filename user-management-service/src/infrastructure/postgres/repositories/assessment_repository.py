@@ -1,10 +1,12 @@
+from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
-from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM
+from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM, ProcessedEventORM
 
 
 class AssessmentPostgresRepository(IAssessmentRepository):
@@ -50,6 +52,66 @@ class AssessmentPostgresRepository(IAssessmentRepository):
     async def get_attempt(self, attempt_id: UUID) -> CandidateAttemptORM | None:
         result = await self._session.execute(select(CandidateAttemptORM).where(CandidateAttemptORM.id == attempt_id))
         return result.scalar_one_or_none()
+
+    async def get_attempt_with_invitation(self, attempt_id: UUID) -> tuple[CandidateAttemptORM, CandidateInvitationORM] | None:
+        result = await self._session.execute(
+            select(CandidateAttemptORM, CandidateInvitationORM)
+            .join(CandidateInvitationORM, CandidateAttemptORM.invitation_id == CandidateInvitationORM.id)
+            .where(CandidateAttemptORM.id == attempt_id)
+            .with_for_update()
+        )
+        return result.one_or_none()
+
+    async def claim_event(self, consumer_name: str, event_id: UUID) -> bool:
+        statement = (
+            insert(ProcessedEventORM)
+            .values(id=uuid4(), consumer_name=consumer_name, event_id=event_id)
+            .on_conflict_do_nothing(constraint="uq_processed_events_consumer_event")
+            .returning(ProcessedEventORM.id)
+        )
+        return (await self._session.execute(statement)).scalar_one_or_none() is not None
+
+    async def create_outbox_message(self, message: AssessmentOutboxORM) -> AssessmentOutboxORM:
+        self._session.add(message)
+        await self._session.flush()
+        return message
+
+    async def claim_outbox_messages(self, limit: int) -> list[AssessmentOutboxORM]:
+        now = datetime.now(UTC)
+        result = await self._session.execute(
+            select(AssessmentOutboxORM)
+            .where(
+                or_(
+                    AssessmentOutboxORM.status == "pending",
+                    (AssessmentOutboxORM.status == "dispatching") & (AssessmentOutboxORM.locked_until <= now),
+                )
+            )
+            .order_by(AssessmentOutboxORM.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        messages = list(result.scalars())
+        for message in messages:
+            message.status = "dispatching"
+            message.attempts += 1
+            message.locked_until = now + timedelta(minutes=1)
+        await self._session.flush()
+        return messages
+
+    async def mark_outbox_published(self, message_id: UUID) -> None:
+        message = await self._session.get(AssessmentOutboxORM, message_id, with_for_update=True)
+        if message is not None:
+            message.status = "published"
+            message.published_at = datetime.now(UTC)
+            message.locked_until = None
+            message.last_error = None
+
+    async def release_outbox_message(self, message_id: UUID, error: str) -> None:
+        message = await self._session.get(AssessmentOutboxORM, message_id, with_for_update=True)
+        if message is not None:
+            message.status = "pending"
+            message.locked_until = None
+            message.last_error = error[:512]
 
     async def create_cv_upload(self, upload: AssessmentCVUploadORM) -> AssessmentCVUploadORM:
         self._session.add(upload)

@@ -106,6 +106,9 @@ class AssessmentSettings(BaseSettings):
     invitation_token_pepper: str = ""
     invitation_ttl_hours: int = 48
     candidate_attempt_token_expire_minutes: int = 240
+    # Required for service-to-service routes.  An empty value deliberately
+    # disables those routes rather than creating a development backdoor.
+    internal_service_token: str = ""
 
     model_config = SettingsConfigDict(env_prefix="ASSESSMENT_", env_file=".env", extra="ignore")
 
@@ -136,6 +139,8 @@ class RabbitMQSettings(BaseSettings):
     reset_password_queue_name: str = "reset-password-stream"
     email_verify_queue_name: str = "email-verify-stream"
     user_deleted_queue_name: str = "user-deleted-stream"
+    assessment_completed_queue_name: str = "assessment-completed"
+    employer_notification_queue_name: str = "employer-notification-requested"
 
     timeout: float = 30
 

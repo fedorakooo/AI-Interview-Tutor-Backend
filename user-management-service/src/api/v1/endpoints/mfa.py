@@ -1,5 +1,3 @@
-"""Optional TOTP MFA scaffold for admin accounts."""
-
 from __future__ import annotations
 
 from typing import Annotated

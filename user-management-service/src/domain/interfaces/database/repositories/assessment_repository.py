@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM
+from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM
 
 
 class IAssessmentRepository(ABC):
@@ -25,6 +25,24 @@ class IAssessmentRepository(ABC):
 
     @abstractmethod
     async def get_attempt(self, attempt_id: UUID) -> CandidateAttemptORM | None: ...
+
+    @abstractmethod
+    async def get_attempt_with_invitation(self, attempt_id: UUID) -> tuple[CandidateAttemptORM, CandidateInvitationORM] | None: ...
+
+    @abstractmethod
+    async def claim_event(self, consumer_name: str, event_id: UUID) -> bool: ...
+
+    @abstractmethod
+    async def create_outbox_message(self, message: AssessmentOutboxORM) -> AssessmentOutboxORM: ...
+
+    @abstractmethod
+    async def claim_outbox_messages(self, limit: int) -> list[AssessmentOutboxORM]: ...
+
+    @abstractmethod
+    async def mark_outbox_published(self, message_id: UUID) -> None: ...
+
+    @abstractmethod
+    async def release_outbox_message(self, message_id: UUID, error: str) -> None: ...
 
     @abstractmethod
     async def create_cv_upload(self, upload: AssessmentCVUploadORM) -> AssessmentCVUploadORM: ...

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -114,3 +114,24 @@ class ProcessedEventORM(Base):
     consumer_name: Mapped[str] = mapped_column(String(96))
     event_id: Mapped[UUID] = mapped_column()
     processed_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
+
+
+class AssessmentOutboxORM(Base):
+    """Durable messages created in the same transaction as assessment state."""
+
+    __tablename__ = "assessment_outbox"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'dispatching', 'published')", name="ck_assessment_outbox_status"),
+        UniqueConstraint("event_type", "event_id", name="uq_assessment_outbox_event"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    event_id: Mapped[UUID] = mapped_column(index=True)
+    event_type: Mapped[str] = mapped_column(String(96))
+    payload: Mapped[dict] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))

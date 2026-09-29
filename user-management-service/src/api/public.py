@@ -12,7 +12,7 @@ from src.api.dependencies.auth import get_candidate_attempt_token_handler
 from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.rabbitmq import get_cv_analyzer_producer
 from src.api.dependencies.s3 import get_s3_client
-from src.application.use_cases.assessments import AssessmentFlowError, CompleteAttemptUseCase, PublicInvitationUseCase, UploadAttemptCVUseCase
+from src.application.use_cases.assessments import AssessmentFlowError, PublicInvitationUseCase, UploadAttemptCVUseCase
 from src.domain.interfaces.auth.candidate_attempt_token_handler import ICandidateAttemptTokenHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
@@ -49,11 +49,6 @@ class AttemptProgress(BaseModel):
 class AttemptCVResponse(BaseModel):
     correlation_id: UUID
     status: str
-
-
-class CompleteAttemptRequest(BaseModel):
-    session_id: str = Field(min_length=1, max_length=128)
-    report_reference: str = Field(min_length=1, max_length=512)
 
 
 def _enabled() -> None:
@@ -134,20 +129,3 @@ async def upload_attempt_cv(
     except AssessmentFlowError as exc:
         raise _public_error() from exc
     return AttemptCVResponse(correlation_id=upload.correlation_id, status=upload.status)
-
-
-@router.post("/attempts/{attempt_id}/complete", response_model=AttemptProgress)
-async def complete_attempt(
-    attempt_id: UUID,
-    body: CompleteAttemptRequest,
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(candidate_bearer)],
-    token_handler: Annotated[ICandidateAttemptTokenHandler, Depends(get_candidate_attempt_token_handler)],
-    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
-) -> AttemptProgress:
-    _enabled()
-    try:
-        token_handler.verify(credentials.credentials, str(attempt_id))
-        attempt = await CompleteAttemptUseCase(uow)(attempt_id, body.session_id, body.report_reference)
-    except AssessmentFlowError as exc:
-        raise _public_error() from exc
-    return AttemptProgress(status=attempt.status, cv_status="completed")
