@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import os
-import uuid
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from jwt_handler.value_objects import AccessTokenPayload
@@ -16,14 +16,11 @@ from shared_models.billing.entitlements import (
 )
 
 from src.api.security import require_authenticated, require_roles
+from src.api.dependencies.database import get_unit_of_work
+from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.user_role import UserRole
 
 router = APIRouter(prefix="/billing", tags=["Billing"])
-
-# In-memory usage counters for local/dev; replace with Redis/Postgres in production.
-_USAGE: dict[str, dict[str, int]] = {}
-_USER_TIERS: dict[str, str] = {}
-
 
 def _stripe_enabled() -> bool:
     return bool(os.getenv("STRIPE_SECRET_KEY")) and os.getenv("FEATURE_STRIPE_BILLING", "false").lower() in {
@@ -36,21 +33,24 @@ def _stripe_enabled() -> bool:
 @router.get("/entitlements", response_model=Entitlements)
 async def get_entitlements(
     payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
 ) -> Entitlements:
-    user_id = payload["id"]
-    tier = SubscriptionTier(_USER_TIERS.get(user_id, "free"))
-    entitlements = Entitlements.for_tier(tier)
-    entitlements.usage = dict(_USAGE.get(user_id, {}))
-    return entitlements
+    async with uow:
+        user = await uow.user_repository.get_by_id(UUID(payload["id"]))
+    # An authenticated token whose account was deleted must not silently
+    # receive free-plan access.
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable")
+    return Entitlements.for_tier(user.subscription_tier)
 
 
 @router.post("/checkout-session", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
     body: CheckoutSessionRequest,
     payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
 ) -> CheckoutSessionResponse:
     user_id = payload["id"]
-    session_id = f"cs_mock_{uuid.uuid4().hex}"
 
     if _stripe_enabled():
         try:
@@ -78,8 +78,16 @@ async def create_checkout_session(
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Stripe error: {exc}") from exc
 
-    # Mock checkout: immediately upgrade entitlements for local demos.
-    _USER_TIERS[user_id] = body.tier.value
+    # Local demo checkout intentionally has no external provider, but it is
+    # still durable and therefore behaves correctly across a process restart.
+    import uuid
+    session_id = f"cs_mock_{uuid.uuid4().hex}"
+    async with uow:
+        user = await uow.user_repository.get_by_id(UUID(user_id))
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable")
+        user.subscription_tier = body.tier.value
+        await uow.user_repository.update(user)
     return CheckoutSessionResponse(
         checkout_url=f"{body.success_url}?session_id={session_id}&tier={body.tier.value}",
         session_id=session_id,
@@ -97,6 +105,12 @@ async def admin_set_tier(
     user_id: str,
     tier: SubscriptionTier,
     _: Annotated[AccessTokenPayload, Depends(require_roles(UserRole.ADMIN))],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
 ) -> dict[str, str]:
-    _USER_TIERS[user_id] = tier.value
+    async with uow:
+        user = await uow.user_repository.get_by_id(UUID(user_id))
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        user.subscription_tier = tier.value
+        await uow.user_repository.update(user)
     return {"detail": f"Tier set to {tier.value}"}

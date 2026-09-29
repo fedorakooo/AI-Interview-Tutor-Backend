@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.exception_handler import exception_container
 from src.api.v1.router import router
+from src.api.public import router as public_router
+from src.api.internal import router as internal_router
 from src.config import settings
 from src.lifespan import lifespan
 
@@ -45,6 +47,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(public_router)
+app.include_router(internal_router)
 
 exception_container(app)
 

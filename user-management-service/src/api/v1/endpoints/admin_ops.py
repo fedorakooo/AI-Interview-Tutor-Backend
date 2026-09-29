@@ -1,5 +1,3 @@
-"""Admin ops endpoints for DLQ visibility, feature flags, and LLM spend placeholders."""
-
 from __future__ import annotations
 
 from typing import Annotated

@@ -9,6 +9,12 @@ from src.config import settings
 from src.domain.entities.user_cv_upload import UserCVUpload
 from src.infrastructure.postgres.repositories.user_cv_upload_repository import UserCVUploadPostgresRepository
 from src.infrastructure.postgres.repositories.user_repository import UserPostgresRepository
+from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
+from src.infrastructure.postgres.repositories.vacancy_repository import VacancyPostgresRepository
+from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
+from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
+from shared_models.assessment.contracts import AttemptStatus
+from shared_models.messaging.common import AnalysisStatus
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
 
 
@@ -55,15 +61,30 @@ class CVResultsConsumer:
                 session=session,
                 user_repository=user_repository,
                 user_cv_upload_repository=cv_repository,
+                organization_repository=OrganizationPostgresRepository(session),
+                vacancy_repository=VacancyPostgresRepository(session),
+                assessment_repository=AssessmentPostgresRepository(session),
+                notification_preference_repository=NotificationPreferencePostgresRepository(session),
             )
 
             async with uow:
                 existing = await uow.user_cv_upload_repository.get_by_correlation_id(result.correlation_id)
                 if existing is None:
-                    self.logger.warning(
-                        "Received CV result for unknown correlation_id=%s",
-                        result.correlation_id,
-                    )
+                    assessment_upload = await uow.assessment_repository.get_cv_upload_by_correlation_id(result.correlation_id)
+                    if assessment_upload is None:
+                        self.logger.warning("Received CV result for unknown correlation_id=%s", result.correlation_id)
+                        return
+                    assessment_upload.status = result.status.value
+                    assessment_upload.error_code = result.error_code
+                    assessment_upload.error_message = result.error_message
+                    assessment_upload.mongo_document_id = result.mongo_document_id
+                    attempt = await uow.assessment_repository.get_attempt(assessment_upload.attempt_id)
+                    if attempt is not None:
+                        if result.status == AnalysisStatus.COMPLETED:
+                            attempt.status, attempt.failure_code = AttemptStatus.READY.value, None
+                        elif result.status == AnalysisStatus.FAILED:
+                            attempt.status, attempt.failure_code = AttemptStatus.FAILED.value, result.error_code or "CV_ANALYSIS_FAILED"
+                    self.logger.info("Updated assessment CV status correlation_id=%s status=%s", result.correlation_id, result.status.value)
                     return
 
                 updated = UserCVUpload(

@@ -13,6 +13,9 @@ class RedisClient(IRedisClient):
     async def get(self, key: str) -> str | None:
         return await self.redis.get(key)
 
+    async def getdel(self, key: str) -> str | None:
+        return await self.redis.getdel(key)
+
     async def setex(self, key: str, time: int, value: str) -> bool:
         return await self.redis.setex(key, time, value)
 

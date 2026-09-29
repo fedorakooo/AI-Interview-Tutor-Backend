@@ -9,6 +9,8 @@ from src.api.dependencies.redis import get_redis
 from src.config import settings
 from src.infrastructure.logger.logger import logger
 from src.infrastructure.rabbitmq.cv_results_consumer import CVResultsConsumer
+from src.infrastructure.rabbitmq.assessment_completed_consumer import AssessmentCompletedConsumer
+from src.infrastructure.rabbitmq.assessment_outbox_dispatcher import AssessmentOutboxDispatcher
 
 
 def wait_for_rabbitmq(
@@ -35,12 +37,18 @@ async def lifespan(app: FastAPI):
     async_engine = get_async_engine()
     wait_for_rabbitmq()
     cv_results_consumer = CVResultsConsumer(logger=logger)
+    assessment_completed_consumer = AssessmentCompletedConsumer(logger=logger)
+    assessment_outbox_dispatcher = AssessmentOutboxDispatcher(logger=logger)
     await cv_results_consumer.start()
+    await assessment_completed_consumer.start()
+    await assessment_outbox_dispatcher.start()
 
     try:
         yield
     finally:
         await cv_results_consumer.stop()
+        await assessment_completed_consumer.stop()
+        await assessment_outbox_dispatcher.stop()
         if redis:
             await redis.close()
         if async_engine:

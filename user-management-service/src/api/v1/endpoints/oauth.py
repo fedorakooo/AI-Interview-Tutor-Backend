@@ -21,16 +21,19 @@ from src.api.dependencies.auth import (
     get_refresh_token_generator,
 )
 from src.api.dependencies.database import get_unit_of_work
+from src.api.dependencies.redis import get_redis_client
 from src.application.dtos.user import UserCreateDTO
 from src.application.mappers.user_mapper import UserMapper
 from src.config import settings
 from src.domain.interfaces.auth.password_handler import IPasswordHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
+from src.domain.interfaces.redis.redis_client import IRedisClient
 from src.domain.value_objects.user_role import UserRole
 
 router = APIRouter(prefix="/auth/oauth", tags=["OAuth"])
 
-_STATE_STORE: dict[str, str] = {}
+_OAUTH_STATE_PREFIX = "oauth-state:"
+_OAUTH_STATE_TTL_SECONDS = 600
 
 
 class OAuthCallbackBody(BaseModel):
@@ -66,10 +69,14 @@ def _provider_config(provider: str) -> dict[str, str] | None:
     return None
 
 
-def _build_start_response(provider: str, cfg: dict[str, str]) -> dict[str, str]:
+async def _build_start_response(
+    provider: str,
+    cfg: dict[str, str],
+    redis_client: IRedisClient,
+) -> dict[str, str]:
     redirect_uri = settings.frontend_settings.oauth_callback_url
     state = secrets.token_urlsafe(24)
-    _STATE_STORE[state] = provider.lower()
+    await redis_client.setex(f"{_OAUTH_STATE_PREFIX}{state}", _OAUTH_STATE_TTL_SECONDS, provider.lower())
     params = {
         "client_id": cfg["client_id"],
         "redirect_uri": redirect_uri,
@@ -89,8 +96,10 @@ async def _exchange_code_for_tokens(
     access_token_generator: IAccessTokenGenerator,
     refresh_token_generator: IRefreshTokenGenerator,
     password_handler: IPasswordHandler,
+    redis_client: IRedisClient,
 ) -> TokenResponse:
-    if _STATE_STORE.pop(state, None) != provider.lower():
+    # GETDEL preserves the single-use state invariant across API workers.
+    if await redis_client.getdel(f"{_OAUTH_STATE_PREFIX}{state}") != provider.lower():
         raise HTTPException(status_code=400, detail="Invalid OAuth state")
 
     redirect_uri = settings.frontend_settings.oauth_callback_url
@@ -174,20 +183,26 @@ async def _exchange_code_for_tokens(
 
 @router.get("/{provider}")
 @router.post("/{provider}")
-async def oauth_start(provider: str) -> dict[str, str]:
+async def oauth_start(
+    provider: str,
+    redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
+) -> dict[str, str]:
     cfg = _provider_config(provider)
     if cfg is None:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail=f"OAuth provider '{provider}' is not configured (set provider client id/secret env vars)",
         )
-    return _build_start_response(provider.lower(), cfg)
+    return await _build_start_response(provider.lower(), cfg, redis_client)
 
 
 @router.get("/{provider}/start")
 @router.post("/{provider}/start")
-async def oauth_start_explicit(provider: str) -> dict[str, str]:
-    return await oauth_start(provider)
+async def oauth_start_explicit(
+    provider: str,
+    redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
+) -> dict[str, str]:
+    return await oauth_start(provider, redis_client)
 
 
 @router.get("/{provider}/callback", response_model=TokenResponse)
@@ -197,6 +212,7 @@ async def oauth_callback_get(
     access_token_generator: Annotated[IAccessTokenGenerator, Depends(get_access_token_generator)],
     refresh_token_generator: Annotated[IRefreshTokenGenerator, Depends(get_refresh_token_generator)],
     password_handler: Annotated[IPasswordHandler, Depends(get_password_handler)],
+    redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
     code: str = Query(...),
     state: str = Query(...),
 ) -> TokenResponse:
@@ -215,6 +231,7 @@ async def oauth_callback_get(
         access_token_generator,
         refresh_token_generator,
         password_handler,
+        redis_client,
     )
 
 
@@ -226,6 +243,7 @@ async def oauth_callback_post(
     access_token_generator: Annotated[IAccessTokenGenerator, Depends(get_access_token_generator)],
     refresh_token_generator: Annotated[IRefreshTokenGenerator, Depends(get_refresh_token_generator)],
     password_handler: Annotated[IPasswordHandler, Depends(get_password_handler)],
+    redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
 ) -> TokenResponse:
     cfg = _provider_config(provider)
     if cfg is None:
@@ -242,4 +260,5 @@ async def oauth_callback_post(
         access_token_generator,
         refresh_token_generator,
         password_handler,
+        redis_client,
     )
