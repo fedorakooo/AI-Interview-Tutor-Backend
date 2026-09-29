@@ -5,6 +5,7 @@ from src.domain.interfaces.database.repositories.organization_repository import 
 from src.domain.interfaces.database.repositories.vacancy_repository import IVacancyRepository
 from src.domain.interfaces.database.repositories.user_repository import IUserRepository
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
+from src.domain.interfaces.database.repositories.notification_preference_repository import INotificationPreferenceRepository
 from src.domain.interfaces.database.uow import IUnitOfWork
 
 
@@ -19,6 +20,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         organization_repository: IOrganizationRepository,
         vacancy_repository: IVacancyRepository,
         assessment_repository: IAssessmentRepository,
+        notification_preference_repository: INotificationPreferenceRepository,
     ):
         self._session = session
         self._user_repository = user_repository
@@ -26,6 +28,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
         self._organization_repository = organization_repository
         self._vacancy_repository = vacancy_repository
         self._assessment_repository = assessment_repository
+        self._notification_preference_repository = notification_preference_repository
 
     async def __aenter__(self) -> "SqlAlchemyUnitOfWork":
         return self
@@ -68,3 +71,7 @@ class SqlAlchemyUnitOfWork(IUnitOfWork):
     @property
     def assessment_repository(self) -> IAssessmentRepository:
         return self._assessment_repository
+
+    @property
+    def notification_preference_repository(self) -> INotificationPreferenceRepository:
+        return self._notification_preference_repository

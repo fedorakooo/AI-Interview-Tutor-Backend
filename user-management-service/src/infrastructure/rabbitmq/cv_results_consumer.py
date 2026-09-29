@@ -12,6 +12,7 @@ from src.infrastructure.postgres.repositories.user_repository import UserPostgre
 from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
 from src.infrastructure.postgres.repositories.vacancy_repository import VacancyPostgresRepository
 from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
+from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
 from shared_models.assessment.contracts import AttemptStatus
 from shared_models.messaging.common import AnalysisStatus
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
@@ -63,6 +64,7 @@ class CVResultsConsumer:
                 organization_repository=OrganizationPostgresRepository(session),
                 vacancy_repository=VacancyPostgresRepository(session),
                 assessment_repository=AssessmentPostgresRepository(session),
+                notification_preference_repository=NotificationPreferencePostgresRepository(session),
             )
 
             async with uow:

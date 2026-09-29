@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from src.application.use_cases.assessments import RegisterAssessmentCompletionUseCase
 from src.config import settings
 from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
+from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
 from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
 from src.infrastructure.postgres.repositories.user_cv_upload_repository import UserCVUploadPostgresRepository
 from src.infrastructure.postgres.repositories.user_repository import UserPostgresRepository
@@ -62,6 +63,7 @@ class AssessmentCompletedConsumer:
                 organization_repository=OrganizationPostgresRepository(session),
                 vacancy_repository=VacancyPostgresRepository(session),
                 assessment_repository=AssessmentPostgresRepository(session),
+                notification_preference_repository=NotificationPreferencePostgresRepository(session),
             )
             completed = await RegisterAssessmentCompletionUseCase(uow)(event)
         if completed is None:

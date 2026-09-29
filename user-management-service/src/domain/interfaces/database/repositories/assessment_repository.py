@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from uuid import UUID
 
-from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM
+from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionHistoryORM, HumanDecisionORM
 
 
 class IAssessmentRepository(ABC):
@@ -64,6 +64,9 @@ class IAssessmentRepository(ABC):
 
     @abstractmethod
     async def upsert_decision(self, attempt_id: UUID, decision: str, private_note: str | None, actor_user_id: UUID) -> HumanDecisionORM: ...
+
+    @abstractmethod
+    async def list_decision_history(self, attempt_id: UUID) -> list[HumanDecisionHistoryORM]: ...
 
     @abstractmethod
     async def create_audit_entry(self, entry: AuditLogORM) -> AuditLogORM: ...

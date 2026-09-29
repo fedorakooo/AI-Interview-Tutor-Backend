@@ -91,6 +91,19 @@ class HumanDecisionORM(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"), onupdate=text("TIMEZONE('utc', now())"))
 
 
+class HumanDecisionHistoryORM(Base):
+    """Append-only decision evidence; ``human_decisions`` remains the current projection."""
+
+    __tablename__ = "human_decision_history"
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("candidate_attempts.id", ondelete="CASCADE"), index=True)
+    decision: Mapped[str] = mapped_column(String(24))
+    private_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    actor_user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    version: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(server_default=text("TIMEZONE('utc', now())"))
+
+
 class AuditLogORM(Base):
     __tablename__ = "audit_log"
     id: Mapped[UUID] = mapped_column(primary_key=True)

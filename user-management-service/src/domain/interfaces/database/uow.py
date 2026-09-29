@@ -7,6 +7,7 @@ from src.domain.interfaces.database.repositories.user_repository import (
     IUserRepository,
 )
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
+from src.domain.interfaces.database.repositories.notification_preference_repository import INotificationPreferenceRepository
 
 
 class IUnitOfWork(ABC):
@@ -56,4 +57,9 @@ class IUnitOfWork(ABC):
     @property
     @abstractmethod
     def assessment_repository(self) -> IAssessmentRepository:
+        pass
+
+    @property
+    @abstractmethod
+    def notification_preference_repository(self) -> INotificationPreferenceRepository:
         pass

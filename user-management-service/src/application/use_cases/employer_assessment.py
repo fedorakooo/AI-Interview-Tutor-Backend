@@ -61,3 +61,15 @@ class RecordHumanDecisionUseCase:
                 )
             )
             return recorded
+
+
+class ListHumanDecisionHistoryUseCase:
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, organization_id: UUID, attempt_id: UUID):
+        async with self._uow:
+            attempt = await self._uow.assessment_repository.get_attempt_for_organization(organization_id, attempt_id)
+            if attempt is None:
+                raise NotFoundError("Assessment attempt not found")
+            return await self._uow.assessment_repository.list_decision_history(attempt_id)

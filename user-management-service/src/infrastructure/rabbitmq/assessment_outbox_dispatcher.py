@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from src.config import settings
 from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
+from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
 from src.infrastructure.postgres.repositories.organization_repository import OrganizationPostgresRepository
 from src.infrastructure.postgres.repositories.user_cv_upload_repository import UserCVUploadPostgresRepository
 from src.infrastructure.postgres.repositories.user_repository import UserPostgresRepository
@@ -38,6 +39,7 @@ class AssessmentOutboxDispatcher:
             organization_repository=OrganizationPostgresRepository(session),
             vacancy_repository=VacancyPostgresRepository(session),
             assessment_repository=AssessmentPostgresRepository(session),
+            notification_preference_repository=NotificationPreferencePostgresRepository(session),
         )
 
     async def start(self) -> None:

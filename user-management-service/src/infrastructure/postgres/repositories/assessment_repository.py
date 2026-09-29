@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
-from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionORM, ProcessedEventORM
+from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionHistoryORM, HumanDecisionORM, ProcessedEventORM
 
 
 class AssessmentPostgresRepository(IAssessmentRepository):
@@ -160,7 +160,21 @@ class AssessmentPostgresRepository(IAssessmentRepository):
             existing.decision, existing.private_note, existing.actor_user_id = decision, private_note, actor_user_id
             existing.version += 1
         await self._session.flush()
+        self._session.add(HumanDecisionHistoryORM(
+            id=uuid4(), attempt_id=attempt_id, decision=existing.decision,
+            private_note=existing.private_note, actor_user_id=existing.actor_user_id,
+            version=existing.version,
+        ))
+        await self._session.flush()
         return existing
+
+    async def list_decision_history(self, attempt_id: UUID) -> list[HumanDecisionHistoryORM]:
+        result = await self._session.execute(
+            select(HumanDecisionHistoryORM)
+            .where(HumanDecisionHistoryORM.attempt_id == attempt_id)
+            .order_by(HumanDecisionHistoryORM.version)
+        )
+        return list(result.scalars())
 
     async def create_audit_entry(self, entry: AuditLogORM) -> AuditLogORM:
         self._session.add(entry)

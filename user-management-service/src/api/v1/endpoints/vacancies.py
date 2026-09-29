@@ -23,7 +23,7 @@ from src.domain.entities.organization import OrganizationMember
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
 from src.application.use_cases.assessments import CreateInvitationUseCase, RevokeInvitationUseCase
-from src.application.use_cases.employer_assessment import GetAuthorizedReportUseCase, ListCandidatesUseCase, RecordHumanDecisionUseCase
+from src.application.use_cases.employer_assessment import GetAuthorizedReportUseCase, ListCandidatesUseCase, ListHumanDecisionHistoryUseCase, RecordHumanDecisionUseCase
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 
 router = APIRouter(prefix="/organizations/{organization_id}/vacancies", tags=["Vacancies"])
@@ -87,6 +87,12 @@ class HumanDecisionRequest(BaseModel):
 class HumanDecisionView(BaseModel):
     decision: HumanDecisionType
     version: int
+
+
+class HumanDecisionHistoryView(HumanDecisionView):
+    actor_user_id: UUID
+    private_note: str | None
+    created_at: datetime
 
 
 def _require_feature() -> None:
@@ -260,3 +266,21 @@ async def record_decision(
     _require_feature()
     recorded = await RecordHumanDecisionUseCase(uow)(organization_id, attempt_id, body.decision, body.private_note, UUID(payload["id"]))
     return HumanDecisionView(decision=HumanDecisionType(recorded.decision), version=recorded.version)
+
+
+@assessment_router.get("/{attempt_id}/decision-history", response_model=list[HumanDecisionHistoryView])
+async def get_decision_history(
+    organization_id: UUID, attempt_id: UUID,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN, OrganizationRole.RECRUITER, OrganizationRole.HIRING_MANAGER))],
+) -> list[HumanDecisionHistoryView]:
+    _require_feature()
+    history = await ListHumanDecisionHistoryUseCase(uow)(organization_id, attempt_id)
+    return [
+        HumanDecisionHistoryView(
+            decision=HumanDecisionType(item.decision), version=item.version,
+            actor_user_id=item.actor_user_id, private_note=item.private_note,
+            created_at=item.created_at,
+        )
+        for item in history
+    ]

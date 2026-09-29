@@ -23,6 +23,8 @@ from src.infrastructure.postgres.repositories.organization_repository import Org
 from src.infrastructure.postgres.repositories.vacancy_repository import VacancyPostgresRepository
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
 from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
+from src.domain.interfaces.database.repositories.notification_preference_repository import INotificationPreferenceRepository
+from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
 from src.infrastructure.postgres.uow import SqlAlchemyUnitOfWork
 
 
@@ -82,6 +84,12 @@ def get_assessment_repository(session: Annotated[AsyncSession, Depends(get_sessi
     return AssessmentPostgresRepository(session)
 
 
+def get_notification_preference_repository(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> INotificationPreferenceRepository:
+    return NotificationPreferencePostgresRepository(session)
+
+
 def get_unit_of_work(
     session: Annotated[AsyncSession, Depends(get_session)],
     user_repository: Annotated[IUserRepository, Depends(get_user_repository)],
@@ -89,6 +97,9 @@ def get_unit_of_work(
     organization_repository: Annotated[IOrganizationRepository, Depends(get_organization_repository)],
     vacancy_repository: Annotated[IVacancyRepository, Depends(get_vacancy_repository)],
     assessment_repository: Annotated[IAssessmentRepository, Depends(get_assessment_repository)],
+    notification_preference_repository: Annotated[
+        INotificationPreferenceRepository, Depends(get_notification_preference_repository)
+    ],
 ) -> IUnitOfWork:
     return SqlAlchemyUnitOfWork(
         session=session,
@@ -97,4 +108,5 @@ def get_unit_of_work(
         organization_repository=organization_repository,
         vacancy_repository=vacancy_repository,
         assessment_repository=assessment_repository,
+        notification_preference_repository=notification_preference_repository,
     )
