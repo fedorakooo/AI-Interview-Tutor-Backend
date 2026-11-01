@@ -34,6 +34,8 @@ async def mfa_setup(
         result = await setup_mfa_use_case(UUID(payload["id"]))
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return MFASetupResponse(secret=result["secret"], otpauth_uri=result["otpauth_uri"])

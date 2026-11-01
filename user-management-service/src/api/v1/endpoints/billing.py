@@ -83,7 +83,7 @@ async def create_checkout_session(
     import uuid
     session_id = f"cs_mock_{uuid.uuid4().hex}"
     async with uow:
-        user = await uow.user_repository.get_by_id(UUID(user_id))
+        user = await uow.user_repository.get_by_id(UUID(user_id), for_update=True)
         if user is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account unavailable")
         user.subscription_tier = body.tier.value
@@ -108,7 +108,7 @@ async def admin_set_tier(
     uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
 ) -> dict[str, str]:
     async with uow:
-        user = await uow.user_repository.get_by_id(UUID(user_id))
+        user = await uow.user_repository.get_by_id(UUID(user_id), for_update=True)
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         user.subscription_tier = tier.value

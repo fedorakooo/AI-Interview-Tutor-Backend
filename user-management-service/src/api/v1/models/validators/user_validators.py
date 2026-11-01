@@ -46,6 +46,8 @@ class PasswordValidator:
         password = v.get_secret_value()
         if not (8 <= len(password) <= 128):
             raise ValueError("Password must be between 8 and 128 characters")
+        if len(password.encode("utf-8")) > 72:
+            raise ValueError("Password must not exceed 72 UTF-8 bytes")
         if not re.search(r"\d", password):
             raise ValueError("Password must contain at least one digit")
         return v

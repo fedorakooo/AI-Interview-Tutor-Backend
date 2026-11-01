@@ -24,6 +24,7 @@ class UserORM(Base):
     is_email_verified: Mapped[bool] = mapped_column(default=False)
     subscription_tier: Mapped[str] = mapped_column(default="free")
     mfa_secret: Mapped[str | None] = mapped_column(default=None, nullable=True)
+    auth_version: Mapped[int] = mapped_column(default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(
         server_default=text("TIMEZONE('utc', now())"),
     )
@@ -48,6 +49,7 @@ class UserORM(Base):
             is_email_verified=self.is_email_verified,
             subscription_tier=self.subscription_tier,
             mfa_secret=self.mfa_secret,
+            auth_version=self.auth_version,
         )
 
     @classmethod
@@ -65,4 +67,5 @@ class UserORM(Base):
             is_email_verified=entity.is_email_verified,
             subscription_tier=entity.subscription_tier,
             mfa_secret=entity.mfa_secret,
+            auth_version=entity.auth_version,
         )

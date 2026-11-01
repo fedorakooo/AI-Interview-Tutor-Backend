@@ -1,5 +1,4 @@
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import Depends
 from jwt_handler.interfaces import (
@@ -17,6 +16,7 @@ from src.api.dependencies.auth import (
 from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.rabbitmq import get_email_verify_producer, get_reset_password_producer
 from src.api.dependencies.redis import get_redis_client
+from src.application.use_cases.auth.change_password_use_case import ChangePasswordUseCase
 from src.application.use_cases.auth.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
 from src.application.use_cases.auth.email_verification_use_case import (
     ConfirmEmailVerificationUseCase,
@@ -44,6 +44,13 @@ def get_user_registration_use_case(
         password_handler=password_handler,
         uow=uow,
     )
+
+
+def get_change_password_use_case(
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    password_handler: Annotated[IPasswordHandler, Depends(get_password_handler)],
+) -> ChangePasswordUseCase:
+    return ChangePasswordUseCase(uow=uow, password_handler=password_handler)
 
 
 def get_login_user_use_case(

@@ -30,7 +30,7 @@ class TestUpdateUserUseCase:
 
         assert result == sample_updated_user_read_dto
 
-        mock_user_repository.get_by_id.assert_awaited_once_with(sample_user_id)
+        mock_user_repository.get_by_id.assert_awaited_once_with(sample_user_id, for_update=True)
         mock_user_repository.update.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -91,5 +91,5 @@ class TestUpdateUserUseCase:
         with pytest.raises(NotFoundError):
             await use_case(sample_user_id, sample_user_update_dto)
 
-        mock_user_repository.get_by_id.assert_awaited_once_with(sample_user_id)
+        mock_user_repository.get_by_id.assert_awaited_once_with(sample_user_id, for_update=True)
         mock_user_repository.update.assert_not_awaited()

@@ -6,12 +6,16 @@ from src.domain.exceptions.cv_upload_errors import CVUploadError
 from src.domain.exceptions.login_errors import LoginError
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.exceptions.organization_errors import OrganizationAccessError
-from src.domain.exceptions.user_errors import UserBlockedError
+from src.domain.exceptions.user_errors import UserBlockedError, UserDeletionConflictError
 from src.infrastructure.logger.logger import logger
 from src.infrastructure.postgres.exceptions.database_errors import DatabaseError, DatabaseUniqueViolationError
 
 
 def exception_container(app: FastAPI) -> None:
+    @app.exception_handler(UserDeletionConflictError)
+    async def user_deletion_conflict_handler(request: Request, exc: UserDeletionConflictError):
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
     @app.exception_handler(CVUploadError)
     async def cv_upload_exception_handler(request: Request, exc: CVUploadError):
         return JSONResponse(
@@ -24,6 +28,7 @@ def exception_container(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "Invalid password or login"},
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     @app.exception_handler(TokenError)
@@ -31,6 +36,7 @@ def exception_container(app: FastAPI) -> None:
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": str(exc)},
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     @app.exception_handler(UserBlockedError)

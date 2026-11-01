@@ -13,7 +13,7 @@ def _fixture_pem(name: str) -> str:
 os.environ.setdefault("POSTGRES_USER", "postgres")
 os.environ.setdefault("POSTGRES_HOST", "localhost")
 os.environ.setdefault("POSTGRES_PORT", "5432")
-os.environ.setdefault("POSTGRES_NAME", "user_management")
+os.environ.setdefault("POSTGRES_NAME", "user_management_test")
 os.environ.setdefault("POSTGRES_PASSWORD", "postgres")
 os.environ.setdefault("REDIS_HOST", "localhost")
 os.environ.setdefault("REDIS_PORT", "6379")

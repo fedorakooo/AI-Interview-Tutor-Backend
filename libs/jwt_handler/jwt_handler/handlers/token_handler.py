@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import jwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
@@ -39,6 +40,7 @@ class JWTTokenHandler(ITokenHandler):
 
         to_encode = {
             **payload,
+            "jti": uuid4().hex,
             "exp": expire,
             "iat": now,
         }
@@ -72,7 +74,7 @@ class JWTTokenHandler(ITokenHandler):
                 jwt=token,
                 key=self.public_key,
                 algorithms=[self.algorithm],
-                options={"verify_signature": True},
+                options={"verify_signature": True, "require": ["exp", "iat"]},
             )
         except ExpiredSignatureError as exc:
             raise CustomExpiredSignatureError from exc

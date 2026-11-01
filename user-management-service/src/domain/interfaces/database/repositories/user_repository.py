@@ -9,7 +9,7 @@ class IUserRepository(ABC):
     """Interface defining the interface for user repository operations."""
 
     @abstractmethod
-    async def get_by_id(self, user_id: UUID) -> User | None:
+    async def get_by_id(self, user_id: UUID, *, for_update: bool = False) -> User | None:
         """Returns one user by ID or None."""
         pass
 

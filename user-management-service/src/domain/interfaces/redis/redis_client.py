@@ -25,6 +25,10 @@ class IRedisClient(ABC):
         pass
 
     @abstractmethod
+    async def set_if_absent(self, key: str, time: int, value: str) -> bool:
+        """Atomically create a key with TTL only when it does not exist."""
+
+    @abstractmethod
     async def exists(self, key: str) -> bool:
         """Returns True if key exists."""
         pass

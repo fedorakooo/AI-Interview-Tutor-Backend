@@ -20,7 +20,7 @@ class UpdateUserUseCase:
         """Updates a user and returns the updated user."""
 
         async with self.uow:
-            user = await self.uow.user_repository.get_by_id(user_id)
+            user = await self.uow.user_repository.get_by_id(user_id, for_update=True)
 
             if user is None:
                 raise NotFoundError(f"User with ID {user_id} not found")

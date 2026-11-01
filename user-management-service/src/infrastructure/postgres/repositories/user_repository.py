@@ -5,6 +5,7 @@ from sqlalchemy import asc, delete, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.user import User
+from src.domain.exceptions.user_errors import UserDeletionConflictError
 from src.domain.interfaces.database.repositories.user_repository import IUserRepository
 from src.domain.value_objects.user_filter import OrderField, UserFilter
 from src.infrastructure.postgres.exceptions.database_errors import (
@@ -18,8 +19,10 @@ class UserPostgresRepository(IUserRepository):
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    async def get_by_id(self, user_id: UUID) -> User | None:
+    async def get_by_id(self, user_id: UUID, *, for_update: bool = False) -> User | None:
         query = select(UserORM).where(UserORM.id == user_id)
+        if for_update:
+            query = query.with_for_update()
         result = await self._session.execute(query)
         user_orm = result.scalar_one_or_none()
         return user_orm.to_entity() if user_orm else None
@@ -44,7 +47,8 @@ class UserPostgresRepository(IUserRepository):
         if user_filter.name:
             base_query = base_query.where(
                 or_(
-                    UserORM.name == user_filter.name,
+                    UserORM.first_name == user_filter.name,
+                    UserORM.second_name == user_filter.name,
                     UserORM.username == user_filter.name,
                 )
             )
@@ -54,7 +58,7 @@ class UserPostgresRepository(IUserRepository):
         total_count = count_result.scalar_one()
 
         query = (
-            base_query.order_by(sort_expr).offset((user_filter.page - 1) * user_filter.limit).limit(user_filter.limit)
+            base_query.order_by(UserORM.id).offset((user_filter.page - 1) * user_filter.limit).limit(user_filter.limit)
         )
 
         result = await self._session.execute(query)
@@ -84,7 +88,12 @@ class UserPostgresRepository(IUserRepository):
 
     async def delete(self, user_id: UUID) -> bool:
         query = delete(UserORM).where(UserORM.id == user_id)
-        result = await self._session.execute(query)
+        try:
+            result = await self._session.execute(query)
+        except sqlalchemy.exc.IntegrityError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "23503":
+                raise UserDeletionConflictError() from exc
+            raise
         await self._session.flush()
         return result.rowcount == 1
 

@@ -14,3 +14,7 @@ class ResetPasswordRequest(BaseModel):
 
 class PasswordResetTokenResponse(BaseModel):
     password_reset_token: str
+
+
+class ChangePasswordRequest(ResetPasswordRequest):
+    current_password: SecretStr

@@ -5,6 +5,7 @@ from jwt_handler.interfaces import (
 )
 from jwt_handler.value_objects import AuthType
 
+from src.application.use_cases.auth.mfa_use_case import require_mfa_code
 from src.domain.exceptions.login_errors import (
     InvalidPasswordError,
     InvalidUsernameError,
@@ -29,7 +30,7 @@ class LoginUserUseCase:
         self.refresh_token_generator = refresh_token_generator
         self.password_handler = password_handler
 
-    async def __call__(self, username: str, password: str) -> TokenInfoDTO:
+    async def __call__(self, username: str, password: str, totp_code: str | None = None) -> TokenInfoDTO:
         """Checks user credentials and returns access token"""
 
         async with self.uow:
@@ -43,21 +44,24 @@ class LoginUserUseCase:
         )
 
         if not is_password_correct:
-            print(username, password)
             raise InvalidPasswordError()
 
         if user.is_blocked:
             raise UserBlockedError(username)
+
+        require_mfa_code(user, totp_code)
 
         access_token = self.access_token_generator.generate_access_token(
             user_id=str(user.id),
             username=username,
             user_role=user.role,
             is_blocked=user.is_blocked,
+            auth_version=user.auth_version,
         )
         refresh_token = self.refresh_token_generator.generate_refresh_token(
             user_id=str(user.id),
             username=username,
+            auth_version=user.auth_version,
         )
         return TokenInfoDTO(
             access_token=access_token,
