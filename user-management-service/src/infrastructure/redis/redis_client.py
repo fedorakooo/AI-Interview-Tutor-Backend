@@ -19,6 +19,9 @@ class RedisClient(IRedisClient):
     async def setex(self, key: str, time: int, value: str) -> bool:
         return await self.redis.setex(key, time, value)
 
+    async def set_if_absent(self, key: str, time: int, value: str) -> bool:
+        return bool(await self.redis.set(key, value, ex=time, nx=True))
+
     async def exists(self, key: str) -> bool:
         return await self.redis.exists(key) == 1
 

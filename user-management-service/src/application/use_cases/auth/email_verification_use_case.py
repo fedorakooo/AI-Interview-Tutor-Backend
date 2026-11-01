@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID
 
+from jwt_handler.exceptions import TokenError
 from jwt_handler.interfaces import ITokenHandler
 from jwt_handler.value_objects import RefreshTokenPayload
 
@@ -34,7 +35,7 @@ class RequestEmailVerificationUseCase:
 
         if user is None:
             raise NotFoundError("User not found")
-        if user.is_email_verified:
+        if user.is_email_verified or user.is_blocked:
             return
 
         payload = cast(
@@ -43,6 +44,7 @@ class RequestEmailVerificationUseCase:
                 "id": str(user.id),
                 "username": user.email,
                 "type": EMAIL_VERIFY_TOKEN_TYPE,
+                "auth_version": user.auth_version,
             },
         )
         verify_token = self.token_handler.encode_jwt(payload, expire_minutes=EMAIL_VERIFY_EXPIRE_MINUTES)
@@ -66,27 +68,28 @@ class ConfirmEmailVerificationUseCase:
         self.token_handler = token_handler
 
     async def __call__(self, token: str) -> None:
-        from jwt_handler.exceptions import InvalidTokenError, TokenExpiredError
-
-        from src.domain.exceptions.not_found_error import NotFoundError as DomainNotFound
-
         try:
             payload = self.token_handler.decode_jwt(token)
-        except (InvalidTokenError, TokenExpiredError) as exc:
-            raise DomainNotFound("Invalid or expired verification token") from exc
+        except TokenError as exc:
+            raise NotFoundError("Invalid or expired verification token") from exc
 
         if payload.get("type") != EMAIL_VERIFY_TOKEN_TYPE:
-            raise DomainNotFound("Invalid or expired verification token")
+            raise NotFoundError("Invalid or expired verification token")
 
-        user_id = payload.get("id")
-        if not user_id:
-            raise DomainNotFound("Invalid or expired verification token")
+        try:
+            user_id = UUID(payload["id"])
+        except (KeyError, ValueError, TypeError, AttributeError) as exc:
+            raise NotFoundError("Invalid or expired verification token") from exc
 
         async with self.uow:
-            user = await self.uow.user_repository.get_by_id(UUID(str(user_id)))
-            if user is None:
-                raise DomainNotFound("Invalid or expired verification token")
-            if user.is_email_verified:
-                return
+            user = await self.uow.user_repository.get_by_id(user_id, for_update=True)
+            if (
+                user is None
+                or user.is_blocked
+                or user.is_email_verified
+                or payload.get("username") != user.email
+                or payload.get("auth_version") != user.auth_version
+            ):
+                raise NotFoundError("Invalid or expired verification token")
             user.is_email_verified = True
             await self.uow.user_repository.update(user)

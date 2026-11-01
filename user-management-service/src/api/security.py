@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, OAuth2PasswordBearer
+from jwt_handler.exceptions import InvalidTokenError
 from jwt_handler.interfaces import ITokenHandler
 from jwt_handler.value_objects import AccessTokenPayload, TokenType
 
@@ -11,9 +12,9 @@ from src.api.dependencies.database import get_unit_of_work
 from src.domain.entities.organization import OrganizationMember
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.exceptions.organization_errors import OrganizationAccessError
+from src.domain.exceptions.user_errors import UserBlockedError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
-from src.domain.exceptions.user_errors import UserBlockedError
 from src.domain.value_objects.user_role import UserRole
 
 http_bearer = HTTPBearer(auto_error=False)
@@ -25,9 +26,27 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 async def get_access_token_payload(
     token_handler: Annotated[ITokenHandler, Depends(get_token_handler)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
     token: str = Depends(oauth2_scheme),
 ) -> AccessTokenPayload:
-    return token_handler.decode_jwt(token)
+    payload = token_handler.decode_jwt(token)
+    if payload.get("type") != TokenType.ACCESS:
+        raise InvalidTokenError("Invalid access token")
+    try:
+        user_id = UUID(payload["id"])
+    except (KeyError, ValueError, TypeError, AttributeError) as exc:
+        raise InvalidTokenError("Invalid access token") from exc
+    async with uow:
+        user = await uow.user_repository.get_by_id(user_id)
+    if user is None:
+        raise InvalidTokenError("Invalid access token")
+    if user.is_blocked or payload.get("is_blocked"):
+        raise UserBlockedError(user.username)
+    version = payload.get("auth_version", 0)
+    if type(version) is not int or version != user.auth_version:
+        raise InvalidTokenError("Invalid access token")
+    # Authorization uses current database state, including role demotions.
+    return {**payload, "role": user.role, "username": user.username, "is_blocked": user.is_blocked}
 
 
 async def require_authenticated(

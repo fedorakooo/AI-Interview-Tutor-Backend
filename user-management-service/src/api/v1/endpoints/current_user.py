@@ -59,6 +59,7 @@ async def update_me(
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         status.HTTP_403_FORBIDDEN: {"description": "Requesting user is blocked"},
+        status.HTTP_409_CONFLICT: {"description": "Account is referenced by retained records"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Unexpected server error"},
     },
 )

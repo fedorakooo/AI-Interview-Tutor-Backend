@@ -21,3 +21,4 @@ class User:
     is_email_verified: bool = False
     subscription_tier: str = "free"
     mfa_secret: str | None = None
+    auth_version: int = 0

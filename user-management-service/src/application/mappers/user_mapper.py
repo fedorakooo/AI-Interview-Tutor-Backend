@@ -75,7 +75,16 @@ class UserMapper:
             ),
             created_at=current_user.created_at,
             modified_at=now,
-            is_email_verified=current_user.is_email_verified,
+            is_email_verified=(
+                current_user.is_email_verified
+                if not user_update_dto.email or user_update_dto.email == current_user.email
+                else False
+            ),
             subscription_tier=current_user.subscription_tier,
             mfa_secret=current_user.mfa_secret,
+            auth_version=current_user.auth_version
+            + int(
+                (user_update_dto.is_blocked is not None and user_update_dto.is_blocked != current_user.is_blocked)
+                or (user_update_dto.email is not None and user_update_dto.email != current_user.email)
+            ),
         )

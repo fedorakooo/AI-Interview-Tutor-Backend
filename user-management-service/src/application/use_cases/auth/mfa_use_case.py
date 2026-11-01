@@ -10,6 +10,8 @@ import struct
 import time
 from uuid import UUID
 
+from src.domain.entities.user import User
+from src.domain.exceptions.login_errors import InvalidPasswordError
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.user_role import UserRole
@@ -46,9 +48,15 @@ def _verify_totp_hmac(secret: str, code: str, *, window: int = 1) -> bool:
         digest = hmac.new(key, counter, hashlib.sha1).digest()
         start = digest[-1] & 0x0F
         value = struct.unpack(">I", digest[start : start + 4])[0] & 0x7FFFFFFF
-        if f"{value % 1_000_000:06d}" == code:
+        if hmac.compare_digest(f"{value % 1_000_000:06d}", code):
             return True
     return False
+
+
+def require_mfa_code(user: User, code: str | None) -> None:
+    """An enrolled account must prove its second factor before token issuance."""
+    if user.mfa_secret and (code is None or not _verify_totp(user.mfa_secret, code)):
+        raise InvalidPasswordError()
 
 
 class SetupMfaUseCase:
@@ -59,14 +67,17 @@ class SetupMfaUseCase:
 
     async def __call__(self, user_id: UUID) -> dict[str, str]:
         async with self._uow:
-            user = await self._uow.user_repository.get_by_id(user_id)
+            user = await self._uow.user_repository.get_by_id(user_id, for_update=True)
             if user is None:
                 raise NotFoundError(f"User {user_id} not found")
             if user.role != UserRole.ADMIN:
                 raise PermissionError("MFA setup is restricted to admin accounts")
+            if user.mfa_secret:
+                raise ValueError("MFA is already configured")
 
             secret = _generate_totp_secret()
             user.mfa_secret = secret
+            user.auth_version += 1
             await self._uow.user_repository.update(user)
 
         issuer = "AI-Interview-Tutor"

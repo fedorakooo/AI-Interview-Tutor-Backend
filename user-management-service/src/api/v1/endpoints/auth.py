@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies.database import get_session
 from src.api.dependencies.use_cases.auth import (
+    get_change_password_use_case,
     get_confirm_email_verification_use_case,
     get_confirm_reset_password_use_case,
     get_login_user_use_case,
@@ -15,14 +16,13 @@ from src.api.dependencies.use_cases.auth import (
     get_refresh_token_use_case,
     get_request_email_verification_use_case,
     get_request_reset_password_use_case,
-    get_setup_mfa_use_case,
     get_user_registration_use_case,
-    get_verify_mfa_use_case,
 )
-from src.api.v1.endpoints.growth import apply_referral_on_signup
 from src.api.security import get_access_token_payload
-from src.api.v1.models.auth import ResetPasswordRequest
+from src.api.v1.endpoints.growth import apply_referral_on_signup
+from src.api.v1.models.auth import ChangePasswordRequest, ResetPasswordRequest
 from src.api.v1.models.user import UserCreateRequest, UserResponse
+from src.application.use_cases.auth.change_password_use_case import ChangePasswordUseCase
 from src.application.use_cases.auth.confirm_reset_password_use_case import ConfirmResetPasswordUseCase
 from src.application.use_cases.auth.email_verification_use_case import (
     ConfirmEmailVerificationUseCase,
@@ -86,10 +86,12 @@ async def token(
     login_user_use_case: Annotated[LoginUserUseCase, Depends(get_login_user_use_case)],
     username: str = Form(...),
     password: SecretStr = Form(...),
+    totp_code: str | None = Form(default=None),
 ) -> TokenResponse:
     token_info = await login_user_use_case(
         username=username,
         password=password.get_secret_value(),
+        totp_code=totp_code,
     )
     return TokenResponse.from_dto(token_info)
 
@@ -131,7 +133,6 @@ async def logout(
     "/reset-password",
     status_code=status.HTTP_200_OK,
     responses={
-        status.HTTP_404_NOT_FOUND: {"description": "User not found"},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Unexpected server error"},
     },
 )
@@ -162,6 +163,16 @@ async def confirm_reset_password(
 ) -> dict[str, str]:
     await confirm_reset_password_use_case(token, reset_password_request.new_password.get_secret_value())
     return {"detail": "Password updated successfully"}
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    access_token: Annotated[AccessTokenPayload, Depends(get_access_token_payload)],
+    use_case: Annotated[ChangePasswordUseCase, Depends(get_change_password_use_case)],
+) -> dict[str, str]:
+    await use_case(access_token, body.current_password.get_secret_value(), body.new_password.get_secret_value())
+    return {"detail": "Password updated successfully. Please sign in again"}
 
 
 @router.post(

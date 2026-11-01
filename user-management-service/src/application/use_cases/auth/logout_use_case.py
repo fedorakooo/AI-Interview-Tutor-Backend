@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
+from math import ceil
 
 from jwt_handler.exceptions import InvalidTokenError
 from jwt_handler.interfaces import ITokenHandler
 from jwt_handler.value_objects import TokenType
 
+from src.application.use_cases.auth.refresh_token_use_case import refresh_token_key
 from src.domain.interfaces.redis.redis_client import IRedisClient
 
 
@@ -20,15 +22,15 @@ class LogoutUseCase:
             raise InvalidTokenError()
 
         expiration_time = payload.get("exp")
-        if expiration_time is None:
+        if not isinstance(expiration_time, int | float):
             raise InvalidTokenError()
 
-        ttl_seconds = int(expiration_time - datetime.now().timestamp())
+        ttl_seconds = ceil(expiration_time - datetime.now(UTC).timestamp())
         if ttl_seconds <= 0:
             return
 
         await self.redis_client.setex(
-            key=f"refresh-key:{refresh_token}",
-            value=refresh_token,
+            key=refresh_token_key(refresh_token),
+            value="1",
             time=ttl_seconds,
         )

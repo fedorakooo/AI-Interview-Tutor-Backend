@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from jwt_handler.exceptions import InvalidTokenError
 from jwt_handler.value_objects import TokenType
-
 from src.application.use_cases.auth.logout_use_case import LogoutUseCase
+from src.application.use_cases.auth.refresh_token_use_case import refresh_token_key
 
 
 @pytest.fixture
@@ -28,8 +28,9 @@ async def test_logout_blacklists_refresh_token(mock_token_handler, mock_redis):
 
     mock_redis.setex.assert_awaited_once()
     args, kwargs = mock_redis.setex.await_args
-    assert kwargs["key"] == "refresh-key:refresh-token-value"
-    assert kwargs["value"] == "refresh-token-value"
+    assert kwargs["key"] == refresh_token_key("refresh-token-value")
+    assert "refresh-token-value" not in kwargs["key"]
+    assert kwargs["value"] == "1"
     assert kwargs["time"] > 0
 
 

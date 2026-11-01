@@ -22,7 +22,7 @@ class UpdateCurrentUserUseCase:
         """Updates the current user and returns the updated user."""
 
         async with self.uow:
-            current_user = await self.uow.user_repository.get_by_id(UUID(access_token["id"]))
+            current_user = await self.uow.user_repository.get_by_id(UUID(access_token["id"]), for_update=True)
 
             if current_user is None:
                 raise InvalidTokenError()

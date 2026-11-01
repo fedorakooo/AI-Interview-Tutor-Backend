@@ -24,6 +24,7 @@ from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.redis import get_redis_client
 from src.application.dtos.user import UserCreateDTO
 from src.application.mappers.user_mapper import UserMapper
+from src.application.use_cases.auth.mfa_use_case import require_mfa_code
 from src.config import settings
 from src.domain.interfaces.auth.password_handler import IPasswordHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
@@ -39,6 +40,7 @@ _OAUTH_STATE_TTL_SECONDS = 600
 class OAuthCallbackBody(BaseModel):
     code: str
     state: str
+    totp_code: str | None = None
 
 
 def _provider_config(provider: str) -> dict[str, str] | None:
@@ -97,6 +99,7 @@ async def _exchange_code_for_tokens(
     refresh_token_generator: IRefreshTokenGenerator,
     password_handler: IPasswordHandler,
     redis_client: IRedisClient,
+    totp_code: str | None = None,
 ) -> TokenResponse:
     # GETDEL preserves the single-use state invariant across API workers.
     if await redis_client.getdel(f"{_OAUTH_STATE_PREFIX}{state}") != provider.lower():
@@ -119,6 +122,8 @@ async def _exchange_code_for_tokens(
             raise HTTPException(status_code=400, detail="OAuth token exchange failed")
         token_payload = token_resp.json()
         access = token_payload.get("access_token")
+        if not access:
+            raise HTTPException(status_code=400, detail="OAuth token exchange failed")
         headers = {"Authorization": f"Bearer {access}", "Accept": "application/json"}
         user_resp = await client.get(cfg["userinfo_url"], headers=headers)
         if user_resp.status_code >= 400:
@@ -126,14 +131,17 @@ async def _exchange_code_for_tokens(
         profile = user_resp.json()
 
         email = profile.get("email")
-        if not email and provider.lower() == "github":
+        if provider.lower() == "google" and profile.get("email_verified") is not True:
+            raise HTTPException(status_code=400, detail="OAuth email is not verified")
+        if provider.lower() == "github":
+            email = None
             emails_resp = await client.get(
                 "https://api.github.com/user/emails",
                 headers={"Authorization": f"Bearer {access}", "Accept": "application/json"},
             )
             if emails_resp.status_code < 400:
                 for item in emails_resp.json():
-                    if item.get("primary") and item.get("email"):
+                    if item.get("primary") and item.get("verified") and item.get("email"):
                         email = item["email"]
                         break
     if not email:
@@ -164,6 +172,10 @@ async def _exchange_code_for_tokens(
             user = await uow.user_repository.create(entity)
         elif user.is_blocked:
             raise HTTPException(status_code=403, detail="User is blocked")
+        elif not user.is_email_verified:
+            raise HTTPException(status_code=409, detail="Verify the existing account email before using OAuth")
+
+        require_mfa_code(user, totp_code)
 
     token_info = TokenInfoDTO(
         access_token=access_token_generator.generate_access_token(
@@ -171,10 +183,12 @@ async def _exchange_code_for_tokens(
             username=user.username,
             user_role=user.role,
             is_blocked=user.is_blocked,
+            auth_version=user.auth_version,
         ),
         refresh_token=refresh_token_generator.generate_refresh_token(
             user_id=str(user.id),
             username=user.username,
+            auth_version=user.auth_version,
         ),
         auth_type=AuthType.BEARER,
     )
@@ -215,6 +229,7 @@ async def oauth_callback_get(
     redis_client: Annotated[IRedisClient, Depends(get_redis_client)],
     code: str = Query(...),
     state: str = Query(...),
+    totp_code: str | None = Query(default=None),
 ) -> TokenResponse:
     cfg = _provider_config(provider)
     if cfg is None:
@@ -232,6 +247,7 @@ async def oauth_callback_get(
         refresh_token_generator,
         password_handler,
         redis_client,
+        totp_code,
     )
 
 
@@ -261,4 +277,5 @@ async def oauth_callback_post(
         refresh_token_generator,
         password_handler,
         redis_client,
+        body.totp_code,
     )

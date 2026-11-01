@@ -23,7 +23,8 @@ async def test_reset_password_success(test_client, sample_user_data):
 @pytest.mark.asyncio
 async def test_reset_password_nonexistent_email(test_client):
     response = await test_client.post("/api/v1/auth/reset-password", data={"email": faker.email()})
-    assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json() == {"detail": "If the account exists, a reset email has been sent"}
 
 
 @pytest.mark.asyncio
