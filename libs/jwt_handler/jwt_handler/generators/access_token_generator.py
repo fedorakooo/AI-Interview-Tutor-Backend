@@ -11,13 +11,16 @@ class AccessTokenGenerator(IAccessTokenGenerator):
         self.token_handler = token_handler
         self.expire_minutes = settings.access_token_expire_minutes
 
-    def generate_access_token(self, user_id: str, username: str, user_role: str, is_blocked: bool) -> str:
+    def generate_access_token(
+        self, user_id: str, username: str, user_role: str, is_blocked: bool, auth_version: int = 0
+    ) -> str:
         payload = AccessTokenPayload(
             id=user_id,
             username=username,
             role=user_role,
             is_blocked=is_blocked,
-            type=TokenType.REFRESH,
+            type=TokenType.ACCESS,
+            auth_version=auth_version,
         )
         return self.token_handler.encode_jwt(
             payload=payload,

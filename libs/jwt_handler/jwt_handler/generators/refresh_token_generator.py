@@ -11,11 +11,12 @@ class RefreshTokenGenerator(IRefreshTokenGenerator):
         self.token_handler = token_handler
         self.expire_minutes = settings.refresh_token_expire_minutes
 
-    def generate_refresh_token(self, user_id: str, username: str) -> str:
+    def generate_refresh_token(self, user_id: str, username: str, auth_version: int = 0) -> str:
         payload = RefreshTokenPayload(
             id=user_id,
             username=username,
             type=TokenType.REFRESH,
+            auth_version=auth_version,
         )
         return self.token_handler.encode_jwt(
             payload=payload,
