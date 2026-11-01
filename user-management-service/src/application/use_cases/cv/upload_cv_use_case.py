@@ -38,7 +38,7 @@ class UploadCVUseCase:
         filename: str,
         content_type: str,
     ) -> UserCVUpload:
-        self._validate_upload(file_bytes, content_type)
+        self.validate_upload(file_bytes, content_type)
 
         correlation_id = uuid4()
         s3_object_key = f"cvs/{user_id}/{correlation_id}.pdf"
@@ -93,7 +93,8 @@ class UploadCVUseCase:
 
         return created_upload
 
-    def _validate_upload(self, file_bytes: bytes, content_type: str) -> None:
+    @staticmethod
+    def validate_upload(file_bytes: bytes, content_type: str) -> None:
         if content_type != "application/pdf":
             raise UnsupportedMediaTypeError()
         if len(file_bytes) == 0:

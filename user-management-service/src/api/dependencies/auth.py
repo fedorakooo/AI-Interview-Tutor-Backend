@@ -10,7 +10,9 @@ from jwt_handler.interfaces import (
 )
 
 from src.config import settings
+from src.domain.interfaces.auth.candidate_attempt_token_handler import ICandidateAttemptTokenHandler
 from src.domain.interfaces.auth.password_handler import IPasswordHandler
+from src.infrastructure.auth.candidate_attempt_token_handler import CandidateAttemptTokenHandler
 from src.infrastructure.auth.password_handler import PasswordHandler
 
 
@@ -22,6 +24,15 @@ def get_token_handler() -> ITokenHandler:
     return JWTTokenHandler(
         public_key=settings.jwt_settings.public_key,
         private_key=settings.jwt_settings.private_key,
+    )
+
+
+def get_candidate_attempt_token_handler() -> ICandidateAttemptTokenHandler:
+    """Provide the isolated token format used by future public assessment APIs."""
+    return CandidateAttemptTokenHandler(
+        public_key=settings.jwt_settings.public_key,
+        private_key=settings.jwt_settings.private_key,
+        expire_minutes=settings.assessment_settings.candidate_attempt_token_expire_minutes,
     )
 
 

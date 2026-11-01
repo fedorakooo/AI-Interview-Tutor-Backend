@@ -89,6 +89,24 @@ async def test_get_me_without_token_returns_401(test_client):
 
 
 @pytest.mark.asyncio
+async def test_get_me_with_refresh_token_returns_401(test_client, sample_user_data):
+    signup_response = await test_client.post("/api/v1/auth/signup", json=sample_user_data)
+    assert signup_response.status_code == 201
+
+    login_response = await test_client.post(
+        "/api/v1/auth/token",
+        data={"username": sample_user_data["username"], "password": sample_user_data["password"]},
+    )
+    assert login_response.status_code == 200
+
+    response = await test_client.get(
+        "/api/v1/user/me/",
+        headers={"Authorization": f"Bearer {login_response.json()['refresh_token']}"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_get_me_with_blocked_token_returns_403(test_client, sample_user_data):
     signup_response = await test_client.post("/api/v1/auth/signup", json=sample_user_data)
     assert signup_response.status_code == 201

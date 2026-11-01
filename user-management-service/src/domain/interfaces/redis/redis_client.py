@@ -14,6 +14,10 @@ class IRedisClient(ABC):
         """Returns the value of a key."""
 
     @abstractmethod
+    async def getdel(self, key: str) -> str | None:
+        """Atomically returns and removes the value stored at ``key``."""
+
+    @abstractmethod
     async def setex(self, key: str, time: int, value: str) -> bool:
         """
         Sets key to hold the string value and set key to timeout after given seconds.
