@@ -32,7 +32,7 @@ async def health_summary(
         "llm_spend": {
             "period": "current_month",
             "estimated_usd": None,
-            "note": "Connect Langfuse / provider billing exports",
+            "note": "Connect provider billing exports",
         },
         "dlq": {
             "cv-analyze-stream.dlq": {"depth": None},

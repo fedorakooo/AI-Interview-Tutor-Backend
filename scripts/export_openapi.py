@@ -15,7 +15,6 @@ OUT.mkdir(parents=True, exist_ok=True)
 COMMON_PATHS = [
     ROOT / "libs" / "jwt_handler",
     ROOT / "libs" / "shared_models",
-    ROOT / "libs" / "observability",
 ]
 
 
