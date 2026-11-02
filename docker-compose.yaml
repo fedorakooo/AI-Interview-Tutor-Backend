@@ -185,25 +185,17 @@ services:
       MONGODB_HOST: mongodb
       RABBITMQ_HOST: rabbitmq
       PUBLIC_KEY: ${PUBLIC_KEY}
-      POSTGRES_CHECKPOINT_HOST: postgres
-      POSTGRES_CHECKPOINT_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_CHECKPOINT_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_CHECKPOINT_NAME: interview
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_USER: ${REDIS_USER:-app}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-redis}
-      INSTANCE_ID: ${HOSTNAME}
       USER_MANAGEMENT_URL: http://user-management:8000
       USER_MANAGEMENT_INTERNAL_SERVICE_TOKEN: ${ASSESSMENT_INTERNAL_SERVICE_TOKEN:-}
       INTERNAL_SERVICE_TOKEN: ${ASSESSMENT_INTERNAL_SERVICE_TOKEN:-}
-      ALLOW_SAMPLE_CV_FALLBACK: ${ALLOW_SAMPLE_CV_FALLBACK:-true}
     expose:
       - "8001"
     depends_on:
       mongodb:
-        condition: service_healthy
-      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy

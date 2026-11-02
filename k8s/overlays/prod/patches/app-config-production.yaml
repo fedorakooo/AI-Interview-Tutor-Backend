@@ -5,4 +5,3 @@ metadata:
 data:
   ENVIRONMENT: production
   DEBUG: "false"
-  ALLOW_SAMPLE_CV_FALLBACK: "false"
