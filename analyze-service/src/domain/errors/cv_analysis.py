@@ -24,7 +24,7 @@ class InvalidPDFError(CVAnalysisError):
     code = "INVALID_PDF"
 
 
-class ExtractionQualityError(CVAnalysisError):
+class EmptyExtractionError(CVAnalysisError):
     code = "EXTRACTION_EMPTY"
 
 

@@ -8,7 +8,7 @@ from shared_models.cv.cv_data import CVData
 from shared_models.messaging.common import AnalysisStatus, ExtractionMetadata
 from shared_models.messaging.cv_analysis import CVAnalysisDocument, CVAnalysisJobMessage, CVAnalysisResultMessage
 
-from src.agent.errors.cv_parser import CVParserException, ModelOutputParsingException
+from src.agent.errors import CVParserException, ModelOutputParsingException
 from src.agent.interfaces.cv_analyzer import ICVAnalyzer
 from src.config import settings
 from src.domain.adapters.outbound.mongo import IMongoRepository
@@ -17,13 +17,13 @@ from src.domain.adapters.outbound.rabbitmq_producer import IRabbitMQProducer
 from src.domain.adapters.outbound.s3 import IS3Client
 from src.domain.errors.cv_analysis import (
     CVAnalysisError,
+    EmptyExtractionError,
     LLMParseError,
     LLMRateLimitError,
     S3DownloadError,
     TransientAnalysisError,
 )
 from src.domain.models.pdf_extraction_result import PDFExtractionResult
-from src.domain.services.extraction_quality import validate_extraction_quality
 from src.domain.services.pdf_validator import validate_pdf_bytes
 
 
@@ -52,7 +52,8 @@ class CVAnalyzeUseCase:
             validate_pdf_bytes(pdf_bytes, settings.s3_settings.cv_max_upload_bytes)
 
             extraction = await asyncio.to_thread(self.pdf_loader.load_with_metadata, BytesIO(pdf_bytes))
-            validate_extraction_quality(extraction)
+            if not extraction.text.strip():
+                raise EmptyExtractionError("No text could be extracted from the PDF")
 
             analysis_result = await self._analyze_cv(extraction.text)
             document = self._build_mongo_document(job, analysis_result, extraction, started_at)
