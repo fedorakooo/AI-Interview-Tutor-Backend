@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Protocol
 
 from shared_models.cv.cv_data import CVData
@@ -26,17 +27,20 @@ class ContextSnapshot(Protocol):
     interview_context: InterviewContext | None
 
 
-class IContextReader(Protocol):
+class IContextReader(ABC):
     """Read-only port for CV and interview documents owned by other services."""
 
+    @abstractmethod
     async def get_latest_cv(self, user_id: str) -> CVContext | None:
         """Return the latest completed CV analysis for a user."""
         pass
 
+    @abstractmethod
     async def get_latest_interview(self, user_id: str) -> InterviewContext | None:
         """Return the latest completed interview report for a user."""
         pass
 
+    @abstractmethod
     async def get_interview_by_session(self, session_id: str) -> InterviewContext | None:
         """Return interview context for a specific session identifier."""
         pass
