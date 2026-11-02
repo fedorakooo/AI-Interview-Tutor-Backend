@@ -3,12 +3,12 @@ from uuid import uuid4
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from src.api.internal.erasure import router
-from src.application.interview.erasure_service import AttemptErasureService
+from src.api.exception_handler import exception_container
+from src.api.internal.router import router as internal_router
 from src.config import settings
-from src.infrastructure.mongo_attempt_data_eraser import MongoAttemptDataEraser
+from src.infrastructure.mongo.repositories.attempt_data_repository import AttemptDataRepository
 
-from tests.unit_tests.fakes import InMemoryLock
+from tests.unit_tests.fakes import FakeStack
 
 TOKEN = "internal-secret"
 
@@ -43,7 +43,7 @@ async def test_eraser_deletes_only_the_records_of_one_attempt() -> None:
     attempt_id, other_id, correlation_id = uuid4(), uuid4(), uuid4()
     collections = stores(str(attempt_id), str(other_id), str(correlation_id))
 
-    deleted = await MongoAttemptDataEraser(**collections).erase(attempt_id, correlation_id)
+    deleted = await AttemptDataRepository(**collections).erase(attempt_id, correlation_id)
 
     assert deleted == {"events": 2, "assessments": 1, "reviews": 1, "feedback": 2, "cv_documents": 1}
     assert collections["events"].documents == [{"session_id": str(other_id)}]
@@ -55,7 +55,7 @@ async def test_eraser_deletes_only_the_records_of_one_attempt() -> None:
 async def test_eraser_is_idempotent_and_skips_the_cv_when_there_is_none() -> None:
     attempt_id = uuid4()
     collections = stores(str(attempt_id), "x", "c")
-    eraser = MongoAttemptDataEraser(**collections)
+    eraser = AttemptDataRepository(**collections)
 
     first = await eraser.erase(attempt_id, None)
     second = await eraser.erase(attempt_id, None)
@@ -64,10 +64,11 @@ async def test_eraser_is_idempotent_and_skips_the_cv_when_there_is_none() -> Non
     assert set(second.values()) == {0}
 
 
-def api(service: AttemptErasureService) -> TestClient:
+def api(stack: FakeStack) -> TestClient:
     app = FastAPI()
-    app.include_router(router)
-    app.state.attempt_erasure_service = service
+    app.include_router(internal_router)
+    exception_container(app)
+    app.state.container = stack.container
     return TestClient(app, headers={"X-Internal-Service-Token": TOKEN})
 
 
@@ -79,8 +80,9 @@ def internal_token(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_internal_api_erases_under_the_session_lock_and_requires_the_token() -> None:
     attempt_id = uuid4()
     collections = stores(str(attempt_id), "x", "c")
-    lock = InMemoryLock()
-    client = api(AttemptErasureService(lock, MongoAttemptDataEraser(**collections)))
+    stack = FakeStack(attempt_data_repository=AttemptDataRepository(**collections))
+    lock = stack.lock
+    client = api(stack)
 
     response = client.post(f"/api/internal/erasure/{attempt_id}", json={"cv_correlation_id": None})
 
@@ -96,8 +98,8 @@ def test_internal_api_erases_under_the_session_lock_and_requires_the_token() -> 
 
 def test_a_running_interview_is_not_erased() -> None:
     attempt_id = uuid4()
-    lock = InMemoryLock()
-    lock.held.add(str(attempt_id))
-    client = api(AttemptErasureService(lock, MongoAttemptDataEraser(**stores(str(attempt_id), "x", "c"))))
+    stack = FakeStack(attempt_data_repository=AttemptDataRepository(**stores(str(attempt_id), "x", "c")))
+    stack.lock.held.add(str(attempt_id))
+    client = api(stack)
 
     assert client.post(f"/api/internal/erasure/{attempt_id}", json={}).status_code == 409

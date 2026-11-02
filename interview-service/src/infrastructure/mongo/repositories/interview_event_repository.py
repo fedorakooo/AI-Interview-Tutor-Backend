@@ -4,10 +4,10 @@ from pymongo.errors import DuplicateKeyError
 from shared_models.assessment import SessionEvent, SessionEventAdapter
 
 from src.domain.exceptions.session_errors import EventSeqConflictError
-from src.domain.interfaces.event_journal import IEventJournal
+from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
 
 
-class MongoEventJournal(IEventJournal):
+class InterviewEventRepository(IInterviewEventRepository):
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
         self._collection = collection
 

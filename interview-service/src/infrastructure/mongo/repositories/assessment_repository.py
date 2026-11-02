@@ -5,10 +5,10 @@ from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 from shared_models.assessment import Assessment, ReviewEntry
 
-from src.domain.interfaces.assessment_store import IAssessmentStore
+from src.domain.interfaces.assessment_repository import IAssessmentRepository
 
 
-class MongoAssessmentStore(IAssessmentStore):
+class AssessmentRepository(IAssessmentRepository):
     def __init__(self, assessments: AsyncIOMotorCollection, reviews: AsyncIOMotorCollection) -> None:
         self._assessments = assessments
         self._reviews = reviews

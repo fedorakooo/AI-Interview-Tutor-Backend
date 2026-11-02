@@ -4,7 +4,7 @@ from uuid import UUID
 from shared_models.assessment import Assessment, ReviewEntry
 
 
-class IAssessmentStore(ABC):
+class IAssessmentRepository(ABC):
     @abstractmethod
     async def get(self, attempt_id: UUID) -> Assessment | None:
         """Return the stored report of an attempt without reviews."""

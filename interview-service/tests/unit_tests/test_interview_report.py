@@ -1,28 +1,27 @@
 from datetime import UTC, datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from shared_models.assessment import (
-    AssessmentContext,
     CvPolicy,
     Verdict,
     fold_events,
     verify_assessment,
 )
 from shared_models.assessment.mocks import mock_assessment_context, mock_session_events, mock_template
-from src.api.internal.reports import router
-from src.application.interview.report_service import GENERATOR_VERSION, AssessmentReportService
+from src.api.exception_handler import exception_container
+from src.api.internal.router import router as internal_router
+from src.application.services.assessment_report_service import GENERATOR_VERSION
 from src.config import settings
 from src.domain.exceptions.assessment_context_errors import AssessmentContextNotFoundError, AssessmentNotReadyError
 from src.domain.exceptions.report_errors import FocusNotFoundError, ReportNotReadyError
-from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
 from src.domain.interview.report_builder import SessionNotCompletedError, build_assessment
 from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts, FocusText, RedFlagDraft
 from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter, render_digest
 
-from tests.unit_tests.fakes import InMemoryAssessmentStore, InMemoryJournal, ScriptedTextWriter
+from tests.unit_tests.fakes import FakeStack, ScriptedTextWriter
 
 POLICY = CvPolicy.REQUIRED
 TEMPLATE = mock_template(POLICY)
@@ -93,11 +92,19 @@ def test_builder_requires_a_completed_session() -> None:
 
 
 class Harness:
-    def __init__(self, writer_texts: AssessmentTexts | None = None, complete: bool = True) -> None:
-        self.journal = InMemoryJournal()
-        self.store = InMemoryAssessmentStore()
-        self.writer = ScriptedTextWriter(writer_texts)
-        self.service = AssessmentReportService(self.journal, self.store, self.writer, clock=lambda: NOW)
+    def __init__(
+        self, writer_texts: AssessmentTexts | None = None, complete: bool = True, context_error: Exception | None = None
+    ) -> None:
+        self.stack = FakeStack(
+            context=mock_assessment_context(POLICY),
+            context_error=context_error,
+            now=NOW,
+            text_writer=ScriptedTextWriter(writer_texts),
+        )
+        self.container = self.stack.container
+        self.journal = self.stack.event_repository
+        self.store = self.stack.assessment_repository
+        self.writer = self.stack.text_writer
         session_id = str(ATTEMPT_ID)
         source = events() if complete else events()[:-2]
         self.journal.events[session_id] = [e.model_copy(update={"session_id": session_id}) for e in source]
@@ -106,8 +113,8 @@ class Harness:
 async def test_report_is_generated_once_and_cached() -> None:
     harness = Harness(texts())
 
-    first = await harness.service.overview(ATTEMPT_ID, TEMPLATE)
-    second = await harness.service.overview(ATTEMPT_ID, TEMPLATE)
+    first = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
+    second = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
 
     assert first == second
     assert len(harness.writer.digests) == 1
@@ -118,7 +125,7 @@ async def test_report_is_generated_once_and_cached() -> None:
 async def test_writer_failure_still_produces_a_report() -> None:
     harness = Harness()
 
-    overview = await harness.service.overview(ATTEMPT_ID, TEMPLATE)
+    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
 
     assert overview.red_flags == []
     assert len(overview.focus) == len(TEMPLATE.criteria)
@@ -130,16 +137,16 @@ async def test_report_is_not_available_before_the_interview_ends() -> None:
         if complete:
             harness.journal.events.clear()
         with pytest.raises(ReportNotReadyError):
-            await harness.service.overview(ATTEMPT_ID, TEMPLATE)
+            await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
 
 
 async def test_focus_detail_exposes_the_timeline_with_quotes() -> None:
-    detail = await Harness(texts()).service.focus_detail(ATTEMPT_ID, TEMPLATE, "databases")
+    detail = await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, TEMPLATE, "databases")
 
     assert detail.reference_answer
     assert detail.timeline[0].evidence and detail.timeline[0].evidence.quotes
     with pytest.raises(FocusNotFoundError):
-        await Harness(texts()).service.focus_detail(ATTEMPT_ID, TEMPLATE, "unknown")
+        await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, TEMPLATE, "unknown")
 
 
 async def test_reviews_are_appended_and_override_the_final_verdict() -> None:
@@ -148,16 +155,16 @@ async def test_reviews_are_appended_and_override_the_final_verdict() -> None:
     harness = Harness(texts())
     reviewer = uuid4()
 
-    await harness.service.add_review(
+    await harness.container.add_focus_review_use_case(
         ATTEMPT_ID, TEMPLATE, "async_io", ReviewRequest(author_id=reviewer, comment="Asked again, fine")
     )
-    detail = await harness.service.add_review(
+    detail = await harness.container.add_focus_review_use_case(
         ATTEMPT_ID,
         TEMPLATE,
         "async_io",
         ReviewRequest(author_id=reviewer, comment="Overall adequate", manual_verdict=Verdict.ADEQUATE),
     )
-    overview = await harness.service.overview(ATTEMPT_ID, TEMPLATE)
+    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
 
     assert [entry.comment for entry in detail.focus.review] == ["Asked again, fine", "Overall adequate"]
     assert detail.focus.verdict == Verdict.WEAK and detail.focus.final_verdict == Verdict.ADEQUATE
@@ -196,24 +203,14 @@ async def test_assessment_agent_returns_structured_texts_without_a_network() -> 
     assert result.overall_summary == "Summary" and result.focus[0].focus_id == "databases"
 
 
-class FakeContextClient(IAssessmentContextClient):
-    def __init__(self, error: Exception | None = None) -> None:
-        self.error = error
-
-    async def get_context(self, attempt_id: UUID) -> AssessmentContext:
-        if self.error:
-            raise self.error
-        return mock_assessment_context(POLICY)
-
-
 TOKEN = "internal-secret"
 
 
-def api(harness: Harness, error: Exception | None = None, monkeypatch=None) -> TestClient:
+def api(harness: Harness) -> TestClient:
     app = FastAPI()
-    app.include_router(router)
-    app.state.assessment_report_service = harness.service
-    app.state.assessment_context_client = FakeContextClient(error)
+    app.include_router(internal_router)
+    exception_container(app)
+    app.state.container = harness.container
     return TestClient(app, headers={"X-Internal-Service-Token": TOKEN})
 
 
@@ -269,7 +266,9 @@ def test_internal_api_is_disabled_without_a_configured_token(monkeypatch: pytest
     [(AssessmentContextNotFoundError(), 404), (AssessmentNotReadyError(), 409)],
 )
 def test_internal_api_maps_context_errors(error: Exception, status_code: int) -> None:
-    assert api(Harness(texts()), error).get(f"/api/internal/reports/{ATTEMPT_ID}").status_code == status_code
+    assert (
+        api(Harness(texts(), context_error=error)).get(f"/api/internal/reports/{ATTEMPT_ID}").status_code == status_code
+    )
 
 
 def test_internal_api_reports_unfinished_interviews_and_unknown_focus() -> None:

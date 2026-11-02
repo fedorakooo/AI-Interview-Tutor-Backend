@@ -3,7 +3,7 @@ from uuid import UUID
 from shared_models.cv.cv_data import CVData
 from shared_models.messaging.common import AnalysisStatus
 
-from src.domain.interfaces.candidate_cv_provider import ICandidateCvProvider
+from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
 from src.domain.interfaces.mongo import IMongoRepository
 
 CV_METADATA_FIELDS = {
@@ -19,7 +19,7 @@ CV_METADATA_FIELDS = {
 }
 
 
-class MongoCandidateCvProvider(ICandidateCvProvider):
+class CandidateCvRepository(ICandidateCvRepository):
     def __init__(self, repository: IMongoRepository) -> None:
         self._repository = repository
 

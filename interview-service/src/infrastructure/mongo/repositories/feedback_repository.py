@@ -5,10 +5,10 @@ from pymongo import DESCENDING
 from pymongo.errors import DuplicateKeyError
 from shared_models.assessment import FeedbackView
 
-from src.domain.interfaces.feedback_store import IFeedbackStore
+from src.domain.interfaces.feedback_repository import IFeedbackRepository
 
 
-class MongoFeedbackStore(IFeedbackStore):
+class FeedbackRepository(IFeedbackRepository):
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
         self._collection = collection
 

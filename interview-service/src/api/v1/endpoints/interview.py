@@ -1,15 +1,13 @@
 import asyncio
 from collections.abc import AsyncIterator
-from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
 from shared_models.assessment import CandidateMessage, InterviewerMessage, SessionCompleted, SessionEvent
 from shared_models.feature_flags.flags import feature_enabled
 
-from src.api.interview.dependencies import get_interview_session_service, get_open_interview_connection_use_case
-from src.api.interview.protocol import (
+from src.api.v1.schemas.interview_protocol import (
     PROTOCOL_VERSION,
     ClientCandidateMessage,
     ClientHello,
@@ -26,8 +24,8 @@ from src.api.interview.protocol import (
     ServerSessionCompleted,
     ServerTranscriptEntry,
 )
-from src.application.interview.session_service import InterviewSessionService, MessageDelta, SessionOutput
-from src.application.use_cases.open_interview_connection import OpenInterviewConnectionUseCase
+from src.app.container import AppContainer
+from src.application.services.interview_turn_service import MessageDelta, SessionOutput
 from src.config import settings
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import (
@@ -39,7 +37,7 @@ from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
 from src.logger import app_logger
 
-router = APIRouter(prefix="/api/v1/interview", tags=["Interview"])
+router = APIRouter(prefix="/interview", tags=["Interview"])
 
 
 async def _send(websocket: WebSocket, message: ServerMessage) -> None:
@@ -81,12 +79,10 @@ async def _receive_hello(websocket: WebSocket) -> ClientHello | None:
 
 
 async def _open_connection(
-    websocket: WebSocket,
-    hello: ClientHello,
-    use_case: OpenInterviewConnectionUseCase,
+    websocket: WebSocket, hello: ClientHello, container: AppContainer
 ) -> InterviewConnection | None:
     try:
-        return await use_case(hello.token)
+        return await container.open_interview_connection_use_case(hello.token)
     except InvalidAttemptTokenError:
         await _reject(websocket, ErrorCode.UNAUTHORIZED, "Invalid interview token", status.WS_1008_POLICY_VIOLATION)
     except AssessmentNotReadyError:
@@ -173,20 +169,17 @@ async def _stream_guarded(websocket: WebSocket, outputs: AsyncIterator[SessionOu
 
 
 @router.websocket("/ws")
-async def interview_ws(
-    websocket: WebSocket,
-    use_case: Annotated[OpenInterviewConnectionUseCase, Depends(get_open_interview_connection_use_case)],
-    service: Annotated[InterviewSessionService, Depends(get_interview_session_service)],
-) -> None:
+async def interview_ws(websocket: WebSocket) -> None:
     if not feature_enabled("EMPLOYER_ASSESSMENT_DEMO", False):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    container: AppContainer = websocket.app.state.container
     await websocket.accept()
     hello = await _receive_hello(websocket)
     if hello is None:
         return
-    connection = await _open_connection(websocket, hello, use_case)
+    connection = await _open_connection(websocket, hello, container)
     if connection is None:
         return
 
@@ -204,16 +197,16 @@ async def interview_ws(
 
     presence_token: str | None = None
     try:
-        presence_token = await service.register_connection(connection)
-        await _replay(websocket, await service.list_events(connection), hello.last_event_id)
-        if not await _stream_guarded(websocket, service.open_session(connection)):
+        presence_token = await container.register_interview_connection_use_case(connection)
+        await _replay(websocket, await container.list_interview_events_use_case(connection), hello.last_event_id)
+        if not await _stream_guarded(websocket, container.open_interview_session_use_case(connection)):
             return
         while True:
             message = _parse_client_message(await websocket.receive_text())
             if isinstance(message, ClientPing):
                 await _send(websocket, ServerPong())
             elif isinstance(message, ClientCandidateMessage):
-                outputs = service.handle_answer(connection, message.turn_id, message.text)
+                outputs = container.handle_candidate_answer_use_case(connection, message.turn_id, message.text)
                 if not await _stream_guarded(websocket, outputs):
                     return
             else:
@@ -223,6 +216,6 @@ async def interview_ws(
     finally:
         try:
             if presence_token is not None:
-                await service.pause_session(connection, presence_token)
+                await container.pause_interview_session_use_case(connection, presence_token)
         except Exception:
             app_logger.exception("Pausing the interview session failed")

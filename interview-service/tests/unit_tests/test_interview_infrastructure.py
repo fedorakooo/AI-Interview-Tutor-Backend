@@ -5,8 +5,8 @@ from pymongo.errors import DuplicateKeyError
 from shared_models.assessment import CvPolicy
 from shared_models.assessment.mocks import mock_session_events
 from src.domain.exceptions.session_errors import EventSeqConflictError, SessionBusyError
-from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
-from src.infrastructure.mongo_event_journal import MongoEventJournal
+from src.infrastructure.mongo.repositories.candidate_cv_repository import CandidateCvRepository
+from src.infrastructure.mongo.repositories.interview_event_repository import InterviewEventRepository
 from src.infrastructure.redis.session_lock import RedisSessionLock
 
 
@@ -42,7 +42,7 @@ class FakeCollection:
 
 
 async def test_journal_round_trips_events_in_sequence_order() -> None:
-    journal = MongoEventJournal(FakeCollection())
+    journal = InterviewEventRepository(FakeCollection())
     events = mock_session_events(CvPolicy.NONE)
 
     for event in reversed(events):
@@ -52,7 +52,7 @@ async def test_journal_round_trips_events_in_sequence_order() -> None:
 
 
 async def test_journal_rejects_a_duplicate_sequence_number() -> None:
-    journal = MongoEventJournal(FakeCollection())
+    journal = InterviewEventRepository(FakeCollection())
     event = mock_session_events(CvPolicy.REQUIRED)[0]
     await journal.append(event)
 
@@ -63,7 +63,7 @@ async def test_journal_rejects_a_duplicate_sequence_number() -> None:
 async def test_journal_creates_unique_indexes() -> None:
     collection = FakeCollection()
 
-    await MongoEventJournal(collection).ensure_indexes()
+    await InterviewEventRepository(collection).ensure_indexes()
 
     assert all(kwargs == {"unique": True} for _, kwargs in collection.indexes)
     assert len(collection.indexes) == 2
@@ -137,7 +137,7 @@ async def test_cv_provider_strips_metadata_and_looks_up_by_correlation_id() -> N
         }
     )
 
-    cv = await MongoCandidateCvProvider(repository).get(correlation_id)
+    cv = await CandidateCvRepository(repository).get(correlation_id)
 
     assert cv is not None and cv.specialization == "Backend"
     assert repository.queries == [("correlation_id", str(correlation_id), {"status": "completed"})]
@@ -146,7 +146,7 @@ async def test_cv_provider_strips_metadata_and_looks_up_by_correlation_id() -> N
 async def test_cv_provider_returns_nothing_for_a_missing_document() -> None:
     from uuid import uuid4
 
-    assert await MongoCandidateCvProvider(FakeMongoRepository(None)).get(uuid4()) is None
+    assert await CandidateCvRepository(FakeMongoRepository(None)).get(uuid4()) is None
 
 
 class FakeDocumentCollection:
@@ -170,9 +170,9 @@ class FakeDocumentCollection:
 
 async def test_assessment_store_round_trips_a_report_without_reviews_and_keeps_the_first_save() -> None:
     from shared_models.assessment.mocks import mock_assessment
-    from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
+    from src.infrastructure.mongo.repositories.assessment_repository import AssessmentRepository
 
-    store = MongoAssessmentStore(FakeDocumentCollection(), FakeDocumentCollection())
+    store = AssessmentRepository(FakeDocumentCollection(), FakeDocumentCollection())
     assessment = mock_assessment()
 
     await store.save(assessment)
@@ -186,9 +186,9 @@ async def test_assessment_store_appends_reviews_in_creation_order() -> None:
     from datetime import UTC, datetime
 
     from shared_models.assessment import ReviewEntry
-    from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
+    from src.infrastructure.mongo.repositories.assessment_repository import AssessmentRepository
 
-    store = MongoAssessmentStore(FakeDocumentCollection(), FakeDocumentCollection())
+    store = AssessmentRepository(FakeDocumentCollection(), FakeDocumentCollection())
     attempt_id = uuid4()
     for minute, comment in enumerate(["first", "second"]):
         await store.add_review(
@@ -256,9 +256,9 @@ async def test_completion_outbox_stores_once_and_lists_only_unpublished_events()
     from datetime import UTC, datetime
 
     from shared_models.assessment import AssessmentCompleted
-    from src.infrastructure.mongo_completion_outbox import MongoCompletionOutbox
+    from src.infrastructure.mongo.repositories.completion_outbox_repository import CompletionOutboxRepository
 
-    outbox = MongoCompletionOutbox(FakeOutboxCollection())
+    outbox = CompletionOutboxRepository(FakeOutboxCollection())
     event = AssessmentCompleted(
         event_id=uuid4(),
         occurred_at=datetime(2026, 11, 3, tzinfo=UTC),

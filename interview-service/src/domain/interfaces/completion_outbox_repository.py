@@ -4,7 +4,7 @@ from uuid import UUID
 from shared_models.assessment import AssessmentCompleted
 
 
-class ICompletionOutbox(ABC):
+class ICompletionOutboxRepository(ABC):
     @abstractmethod
     async def enqueue(self, event: AssessmentCompleted) -> None:
         """Store a completion event durably, ignoring a repeat of the same event."""

@@ -5,10 +5,10 @@ from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
 from shared_models.assessment import AssessmentCompleted
 
-from src.domain.interfaces.completion_outbox import ICompletionOutbox
+from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
 
 
-class MongoCompletionOutbox(ICompletionOutbox):
+class CompletionOutboxRepository(ICompletionOutboxRepository):
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
         self._collection = collection
 

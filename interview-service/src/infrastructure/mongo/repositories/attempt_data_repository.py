@@ -2,10 +2,10 @@ from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
-from src.domain.interfaces.attempt_data_eraser import IAttemptDataEraser
+from src.domain.interfaces.attempt_data_repository import IAttemptDataRepository
 
 
-class MongoAttemptDataEraser(IAttemptDataEraser):
+class AttemptDataRepository(IAttemptDataRepository):
     def __init__(
         self,
         events: AsyncIOMotorCollection,

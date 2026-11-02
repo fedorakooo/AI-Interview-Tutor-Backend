@@ -15,60 +15,55 @@ from shared_models.assessment.mocks import mock_assessment_context
 from shared_models.assessment.session_events import CompletionReason, MessageKind
 from shared_models.assessment.session_state import SessionStatus
 from shared_models.cv.cv_data import CVData
-from src.application.interview.session_service import InterviewSessionService, MessageDelta
+from src.application.services.interview_turn_service import MessageDelta
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
 from src.domain.interview.dto import EvaluationResult
 
-from tests.unit_tests.fakes import (
-    FIXED_NOW,
-    FakeCvProvider,
-    InMemoryCompletionOutbox,
-    InMemoryJournal,
-    InMemoryLock,
-    InMemoryPresence,
-    RecordingPublisher,
-    ScriptedEvaluator,
-    ScriptedInterviewer,
-)
+from tests.unit_tests.fakes import FIXED_NOW, FakeStack, ScriptedEvaluator
 
 
 class Harness:
-    def __init__(self, policy: CvPolicy = CvPolicy.REQUIRED, cv: CVData | None = CVData()) -> None:
+    def __init__(
+        self,
+        policy: CvPolicy = CvPolicy.REQUIRED,
+        cv: CVData | None = CVData(),
+        evaluator: ScriptedEvaluator | None = None,
+    ) -> None:
         self.context: AssessmentContext = mock_assessment_context(policy)
         self.connection = InterviewConnection(attempt_id=self.context.attempt_id, context=self.context)
-        self.journal = InMemoryJournal()
-        self.lock = InMemoryLock()
-        self.evaluator = ScriptedEvaluator()
-        self.interviewer = ScriptedInterviewer()
-        self.cv_provider = FakeCvProvider(cv)
-        self.publisher = RecordingPublisher()
-        self.outbox = InMemoryCompletionOutbox()
-        self.presence = InMemoryPresence()
-        self.now = FIXED_NOW
-        self.service = InterviewSessionService(
-            journal=self.journal,
-            lock=self.lock,
-            evaluator=self.evaluator,
-            interviewer=self.interviewer,
-            cv_provider=self.cv_provider,
-            completed_publisher=self.publisher,
-            completion_outbox=self.outbox,
-            presence=self.presence,
-            clock=lambda: self.now,
-        )
+        self.stack = FakeStack(context=self.context, cv=cv, evaluator=evaluator)
+        self.container = self.stack.container
+        self.journal = self.stack.event_repository
+        self.lock = self.stack.lock
+        self.evaluator = self.stack.evaluator
+        self.interviewer = self.stack.interviewer
+        self.cv_provider = self.stack.cv_repository
+        self.publisher = self.stack.publisher
+        self.outbox = self.stack.completion_outbox_repository
+        self.presence = self.stack.presence
+
+    @property
+    def now(self):
+        return self.stack.now
+
+    @now.setter
+    def now(self, value) -> None:
+        self.stack.now = value
 
     @property
     def session_id(self) -> str:
         return str(self.connection.attempt_id)
 
     async def open(self) -> list:
-        return [output async for output in self.service.open_session(self.connection)]
+        return [output async for output in self.container.open_interview_session_use_case(self.connection)]
 
     async def answer(self, text: str = "I would profile the query first", turn_id=None) -> list:
         turn_id = turn_id or uuid4()
-        return [output async for output in self.service.handle_answer(self.connection, turn_id, text)]
+        return [
+            output async for output in self.container.handle_candidate_answer_use_case(self.connection, turn_id, text)
+        ]
 
     async def state(self):
         return fold_events(self.journal.events[self.session_id])
@@ -135,8 +130,7 @@ async def test_answer_is_evaluated_and_evidence_and_coverage_are_journaled() -> 
 
 
 async def test_quote_that_is_not_in_the_answer_is_dropped() -> None:
-    harness = Harness()
-    harness.evaluator = ScriptedEvaluator(
+    evaluator = ScriptedEvaluator(
         lambda request: EvaluationResult(
             answer_was_complete=True,
             evidence=[
@@ -149,7 +143,7 @@ async def test_quote_that_is_not_in_the_answer_is_dropped() -> None:
             ],
         )
     )
-    harness.service._evaluator = harness.evaluator
+    harness = Harness(evaluator=evaluator)
     await harness.open()
 
     await harness.answer("a short answer")
@@ -296,14 +290,14 @@ async def test_time_budget_ends_the_interview() -> None:
 
 async def test_disconnect_pauses_only_a_running_session() -> None:
     harness = Harness()
-    token = await harness.service.register_connection(harness.connection)
-    await harness.service.pause_session(harness.connection, token)
+    token = await harness.container.register_interview_connection_use_case(harness.connection)
+    await harness.container.pause_interview_session_use_case(harness.connection, token)
     assert harness.journal.events == {}
 
-    token = await harness.service.register_connection(harness.connection)
+    token = await harness.container.register_interview_connection_use_case(harness.connection)
     await harness.open()
-    await harness.service.pause_session(harness.connection, token)
-    await harness.service.pause_session(harness.connection, token)
+    await harness.container.pause_interview_session_use_case(harness.connection, token)
+    await harness.container.pause_interview_session_use_case(harness.connection, token)
 
     events = harness.journal.events[harness.session_id]
     assert len([e for e in events if isinstance(e, SessionPaused)]) == 1
@@ -312,22 +306,22 @@ async def test_disconnect_pauses_only_a_running_session() -> None:
 
 async def test_a_superseded_connection_does_not_pause_the_resumed_session() -> None:
     harness = Harness()
-    old_token = await harness.service.register_connection(harness.connection)
+    old_token = await harness.container.register_interview_connection_use_case(harness.connection)
     await harness.open()
-    new_token = await harness.service.register_connection(harness.connection)
+    new_token = await harness.container.register_interview_connection_use_case(harness.connection)
 
-    await harness.service.pause_session(harness.connection, old_token)
+    await harness.container.pause_interview_session_use_case(harness.connection, old_token)
 
     assert (await harness.state()).status == SessionStatus.IN_PROGRESS
-    await harness.service.pause_session(harness.connection, new_token)
+    await harness.container.pause_interview_session_use_case(harness.connection, new_token)
     assert (await harness.state()).status == SessionStatus.PAUSED
 
 
 async def test_resumed_session_continues_after_a_pause() -> None:
     harness = Harness()
-    token = await harness.service.register_connection(harness.connection)
+    token = await harness.container.register_interview_connection_use_case(harness.connection)
     await harness.open()
-    await harness.service.pause_session(harness.connection, token)
+    await harness.container.pause_interview_session_use_case(harness.connection, token)
 
     outputs = await harness.answer("answer after reconnecting")
 
@@ -337,10 +331,10 @@ async def test_resumed_session_continues_after_a_pause() -> None:
 
 async def test_time_spent_disconnected_does_not_use_up_the_time_budget() -> None:
     harness = Harness()
-    token = await harness.service.register_connection(harness.connection)
+    token = await harness.container.register_interview_connection_use_case(harness.connection)
     await harness.open()
     harness.now += timedelta(minutes=5)
-    await harness.service.pause_session(harness.connection, token)
+    await harness.container.pause_interview_session_use_case(harness.connection, token)
     harness.now += timedelta(minutes=harness.context.template.duration_minutes + 10)
 
     outputs = await harness.answer("back after a long break")
@@ -360,7 +354,7 @@ async def test_completion_is_stored_durably_before_publishing_and_survives_a_bro
 
 
 async def test_the_dispatcher_publishes_pending_completions_once_the_broker_recovers() -> None:
-    from src.application.interview.completion_dispatcher import CompletionOutboxDispatcher
+    from src.infrastructure.rabbitmq.completion_outbox_dispatcher import CompletionOutboxDispatcher
 
     harness = Harness()
     harness.publisher.fail = True

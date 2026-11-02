@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
-from src.api.interview.protocol import (
+from src.api.v1.schemas.interview_protocol import (
     PROTOCOL_VERSION,
     ClientCandidateMessage,
     ClientHello,

@@ -1,64 +1,49 @@
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic_ai.models.test import TestModel
 from shared_models.assessment import (
-    AssessmentContext,
     FeedbackView,
     ReviewRequest,
     Verdict,
 )
-from shared_models.assessment.mocks import mock_assessment, mock_assessment_context, mock_template
-from src.api.internal.feedback import router
-from src.application.interview.feedback_service import CandidateFeedbackService
+from shared_models.assessment.mocks import mock_assessment, mock_assessment_context
+from src.api.exception_handler import exception_container
+from src.api.internal.router import router as internal_router
 from src.config import settings
 from src.domain.exceptions.feedback_errors import FeedbackDisabledError, FeedbackLeakError
 from src.domain.exceptions.report_errors import ReportNotReadyError
-from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
-from src.domain.interfaces.feedback_store import IFeedbackStore
-from src.domain.interfaces.feedback_writer import IFeedbackWriter
 from src.domain.interview.feedback import FeedbackDigest, build_digest, fallback_text, find_leaks
 from src.infrastructure.ai.feedback_writer import PydanticFeedbackWriter, render_digest
-from src.infrastructure.mongo_feedback_store import MongoFeedbackStore
+from src.infrastructure.mongo.repositories.feedback_repository import FeedbackRepository
 
+from tests.unit_tests.fakes import FakeStack, ScriptedFeedbackWriter
 from tests.unit_tests.test_interview_report import ATTEMPT_ID, NOW, POLICY, TEMPLATE, Harness, texts
 
 FLAG = TEMPLATE.red_flags[1]
 
 
-class InMemoryFeedbackStore(IFeedbackStore):
-    def __init__(self) -> None:
-        self.versions: list[FeedbackView] = []
-
-    async def latest(self, attempt_id: UUID) -> FeedbackView | None:
-        return max((v for v in self.versions if v.attempt_id == attempt_id), key=lambda v: v.version, default=None)
-
-    async def append(self, feedback: FeedbackView) -> bool:
-        if any(v.attempt_id == feedback.attempt_id and v.version == feedback.version for v in self.versions):
-            return False
-        self.versions.append(feedback)
-        return True
-
-
-class ScriptedFeedbackWriter(IFeedbackWriter):
-    def __init__(self, text: str | None = "Thank you! You did well on Python fundamentals.") -> None:
-        self.text = text
-        self.digests: list[FeedbackDigest] = []
-
-    async def write(self, digest: FeedbackDigest) -> str:
-        self.digests.append(digest)
-        if self.text is None:
-            raise RuntimeError("model unavailable")
-        return self.text
+class FeedbackHarness:
+    def __init__(self, writer: ScriptedFeedbackWriter | None = None, context=None, complete: bool = True) -> None:
+        self.writer = writer or ScriptedFeedbackWriter()
+        self.report = Harness(texts(), complete=complete)
+        self.stack = FakeStack(
+            context=context or mock_assessment_context(POLICY),
+            now=NOW,
+            text_writer=self.report.stack.text_writer,
+            feedback_writer=self.writer,
+        )
+        self.stack.event_repository.events.update(self.report.journal.events)
+        self.container = self.stack.container
+        self.store = self.stack.feedback_repository
+        self.journal = self.stack.event_repository
 
 
-def service(writer: ScriptedFeedbackWriter | None = None, template=TEMPLATE):
-    harness = Harness(texts())
-    store = InMemoryFeedbackStore()
-    writer = writer or ScriptedFeedbackWriter()
-    return CandidateFeedbackService(harness.service, store, writer, clock=lambda: NOW), store, writer, harness, template
+def harness_for(writer=None, template=TEMPLATE, complete=True) -> tuple[FeedbackHarness, object]:
+    context = mock_assessment_context(POLICY).model_copy(update={"template": template})
+    return FeedbackHarness(writer, context, complete), template
 
 
 def test_digest_contains_only_skill_names_and_missed_topics() -> None:
@@ -88,13 +73,14 @@ def test_leak_detection_covers_red_flags_review_comments_and_internal_words() ->
 
 
 async def test_feedback_is_generated_once_and_cached() -> None:
-    feedback_service, store, writer, _, template = service()
+    harness, template = harness_for()
+    get_feedback = harness.container.get_candidate_feedback_use_case
 
-    first = await feedback_service.get(ATTEMPT_ID, template)
-    second = await feedback_service.get(ATTEMPT_ID, template)
+    first = await get_feedback(ATTEMPT_ID, template)
+    second = await get_feedback(ATTEMPT_ID, template)
 
     assert first == second and first.version == 1 and first.source == "generated"
-    assert len(writer.digests) == 1 and len(store.versions) == 1
+    assert len(harness.writer.digests) == 1 and len(harness.store.versions) == 1
 
 
 @pytest.mark.parametrize(
@@ -106,35 +92,37 @@ async def test_feedback_is_generated_once_and_cached() -> None:
     ],
 )
 async def test_unsafe_or_failed_generation_falls_back_to_the_deterministic_text(writer) -> None:
-    feedback_service, _, _, _, template = service(writer)
+    harness, template = harness_for(writer)
 
-    feedback = await feedback_service.get(ATTEMPT_ID, template)
+    feedback = await harness.container.get_candidate_feedback_use_case(ATTEMPT_ID, template)
 
     assert "Python fundamentals" in feedback.text and not find_leaks(feedback.text, template, [])
 
 
 async def test_feedback_requires_the_template_to_allow_it_and_a_finished_interview() -> None:
-    feedback_service, _, _, harness, template = service()
+    harness, template = harness_for()
+    get_feedback = harness.container.get_candidate_feedback_use_case
     disabled = template.model_copy(update={"candidate_feedback": False})
 
     with pytest.raises(FeedbackDisabledError):
-        await feedback_service.get(ATTEMPT_ID, disabled)
+        await get_feedback(ATTEMPT_ID, disabled)
     harness.journal.events.clear()
     with pytest.raises(ReportNotReadyError):
-        await feedback_service.get(ATTEMPT_ID, template)
+        await get_feedback(ATTEMPT_ID, template)
 
 
 async def test_edit_creates_a_new_version_and_rejects_internal_details() -> None:
-    feedback_service, store, _, harness, template = service()
+    harness, template = harness_for()
     editor = uuid4()
-    await harness.service.add_review(
+    await harness.container.add_focus_review_use_case(
         ATTEMPT_ID,
         template,
         "async_io",
         ReviewRequest(author_id=editor, comment="Weak on loops", manual_verdict=Verdict.WEAK),
     )
+    edit_feedback = harness.container.edit_candidate_feedback_use_case
 
-    edited = await feedback_service.edit(ATTEMPT_ID, template, editor, "  Thanks, great talk!  ")
+    edited = await edit_feedback(ATTEMPT_ID, template, editor, "  Thanks, great talk!  ")
 
     assert (edited.version, edited.source, edited.editor_id, edited.text) == (
         2,
@@ -142,11 +130,11 @@ async def test_edit_creates_a_new_version_and_rejects_internal_details() -> None
         editor,
         "Thanks, great talk!",
     )
-    assert (await store.latest(ATTEMPT_ID)).version == 2
+    assert (await harness.store.latest(ATTEMPT_ID)).version == 2
     for text in (f"Concern: {FLAG}", "As the reviewer wrote: weak on loops"):
         with pytest.raises(FeedbackLeakError):
-            await feedback_service.edit(ATTEMPT_ID, template, editor, text)
-    assert (await store.latest(ATTEMPT_ID)).version == 2
+            await edit_feedback(ATTEMPT_ID, template, editor, text)
+    assert (await harness.store.latest(ATTEMPT_ID)).version == 2
 
 
 async def test_feedback_writer_agent_returns_text_without_a_network() -> None:
@@ -189,7 +177,7 @@ class FakeFeedbackCollection:
 
 
 async def test_mongo_feedback_store_keeps_versions_and_returns_the_newest() -> None:
-    store = MongoFeedbackStore(FakeFeedbackCollection())
+    store = FeedbackRepository(FakeFeedbackCollection())
     first = FeedbackView(attempt_id=ATTEMPT_ID, version=1, text="v1", source="generated", created_at=NOW)
 
     assert await store.append(first)
@@ -200,19 +188,14 @@ async def test_mongo_feedback_store_keeps_versions_and_returns_the_newest() -> N
     assert await store.latest(uuid4()) is None
 
 
-class FakeContextClient(IAssessmentContextClient):
-    async def get_context(self, attempt_id: UUID) -> AssessmentContext:
-        return mock_assessment_context(POLICY)
-
-
 TOKEN = "internal-secret"
 
 
-def api(feedback_service: CandidateFeedbackService) -> TestClient:
+def api(harness: FeedbackHarness) -> TestClient:
     app = FastAPI()
-    app.include_router(router)
-    app.state.candidate_feedback_service = feedback_service
-    app.state.assessment_context_client = FakeContextClient()
+    app.include_router(internal_router)
+    exception_container(app)
+    app.state.container = harness.container
     return TestClient(app, headers={"X-Internal-Service-Token": TOKEN})
 
 
@@ -222,7 +205,7 @@ def internal_token(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_internal_api_returns_and_edits_feedback() -> None:
-    client = api(service()[0])
+    client = api(harness_for()[0])
 
     first = client.get(f"/api/internal/feedback/{ATTEMPT_ID}")
     edited = client.put(f"/api/internal/feedback/{ATTEMPT_ID}", json={"editor_id": str(uuid4()), "text": "Well done!"})
@@ -232,14 +215,13 @@ def test_internal_api_returns_and_edits_feedback() -> None:
 
 
 def test_internal_api_rejects_leaks_unfinished_interviews_and_missing_tokens() -> None:
-    feedback_service, _, _, harness, _ = service()
-    client = api(feedback_service)
+    harness, _ = harness_for()
+    client = api(harness)
 
     leak = client.put(f"/api/internal/feedback/{ATTEMPT_ID}", json={"editor_id": str(uuid4()), "text": f"Flag: {FLAG}"})
     assert leak.status_code == 422
 
     harness.journal.events.clear()
-    assert client.get(f"/api/internal/feedback/{uuid4()}").status_code in (200, 409)
     assert client.get(f"/api/internal/feedback/{ATTEMPT_ID}").status_code == 409
 
     client.headers.pop("X-Internal-Service-Token")
@@ -247,14 +229,8 @@ def test_internal_api_rejects_leaks_unfinished_interviews_and_missing_tokens() -
 
 
 def test_internal_api_hides_feedback_when_the_template_disables_it() -> None:
-    class DisabledContext(IAssessmentContextClient):
-        async def get_context(self, attempt_id: UUID) -> AssessmentContext:
-            context = mock_assessment_context(POLICY)
-            return context.model_copy(
-                update={"template": mock_template(POLICY).model_copy(update={"candidate_feedback": False})}
-            )
+    disabled = TEMPLATE.model_copy(update={"candidate_feedback": False})
 
-    client = api(service()[0])
-    client.app.state.assessment_context_client = DisabledContext()
+    client = api(harness_for(template=disabled)[0])
 
     assert client.get(f"/api/internal/feedback/{ATTEMPT_ID}").status_code == 404

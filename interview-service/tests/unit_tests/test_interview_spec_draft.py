@@ -3,13 +3,15 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic_ai.models.test import TestModel
 from shared_models.assessment import AssessmentTemplateSnapshot, CvPolicy, TemplateDraftRequest
-from src.api.internal.spec_drafts import router
-from src.application.interview.spec_service import SpecDraftService
+from src.api.exception_handler import exception_container
+from src.api.internal.router import router as internal_router
 from src.config import settings
-from src.domain.interfaces.spec_drafter import ISpecDrafter
-from src.domain.interview.spec_builder import EmptySpecDraftError, build_template
+from src.domain.exceptions.spec_errors import EmptySpecDraftError
+from src.domain.interview.spec_builder import build_template
 from src.domain.interview.spec_dto import DraftCustomQuestion, DraftFocus, SpecDraft
 from src.infrastructure.ai.spec_agent import PydanticSpecDrafter, render_request
+
+from tests.unit_tests.fakes import FakeSpecDrafter, FakeStack
 
 REQUEST = TemplateDraftRequest(
     brief="I want to know how they debug production problems and whether they write tests.",
@@ -110,23 +112,14 @@ async def test_agent_returns_a_structured_draft_without_a_network() -> None:
     assert draft.focus_areas[0].skill == "Debugging" and draft.question_count == 8
 
 
-class FakeDrafter(ISpecDrafter):
-    def __init__(self, draft: SpecDraft | Exception) -> None:
-        self.draft_or_error = draft
-
-    async def draft(self, request: TemplateDraftRequest) -> SpecDraft:
-        if isinstance(self.draft_or_error, Exception):
-            raise self.draft_or_error
-        return self.draft_or_error
-
-
 TOKEN = "internal-secret"
 
 
 def api(draft: SpecDraft | Exception) -> TestClient:
     app = FastAPI()
-    app.include_router(router)
-    app.state.spec_draft_service = SpecDraftService(FakeDrafter(draft))
+    app.include_router(internal_router)
+    exception_container(app)
+    app.state.container = FakeStack(spec_drafter=FakeSpecDrafter(draft)).container
     return TestClient(app, headers={"X-Internal-Service-Token": TOKEN})
 
 

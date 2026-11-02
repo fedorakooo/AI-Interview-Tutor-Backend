@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -9,42 +9,18 @@ from shared_models.assessment import AssessmentContext, CvPolicy, SessionPaused
 from shared_models.assessment.mocks import mock_assessment_context
 from shared_models.cv.cv_data import CVData
 from shared_models.feature_flags.flags import feature_enabled
-from src.api.interview.endpoints import router
-from src.application.interview.session_service import InterviewSessionService
+from src.api.v1.router import router
 from src.config import settings
 from src.domain.exceptions.assessment_context_errors import (
     AssessmentContextNotFoundError,
     AssessmentNotReadyError,
 )
-from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
 
 from tests.conftest import PUBLIC_KEY
-from tests.unit_tests.fakes import (
-    FakeCvProvider,
-    InMemoryCompletionOutbox,
-    InMemoryJournal,
-    InMemoryLock,
-    InMemoryPresence,
-    RecordingPublisher,
-    ScriptedEvaluator,
-    ScriptedInterviewer,
-)
+from tests.unit_tests.fakes import FakeStack
 from tests.unit_tests.test_open_interview_connection_use_case import mint_interview_token
 
 URL = "/api/v1/interview/ws"
-
-
-class FakeContextClient(IAssessmentContextClient):
-    def __init__(self, context: AssessmentContext, error: Exception | None = None) -> None:
-        self.context = context
-        self.error = error
-        self.requested: list[UUID] = []
-
-    async def get_context(self, attempt_id: UUID) -> AssessmentContext:
-        self.requested.append(attempt_id)
-        if self.error is not None:
-            raise self.error
-        return self.context
 
 
 @pytest.fixture(autouse=True)
@@ -62,26 +38,18 @@ def context() -> AssessmentContext:
 
 
 class Backend:
-    def __init__(self, context: AssessmentContext, error: Exception | None = None) -> None:
-        self.context_client = FakeContextClient(context, error)
-        self.journal = InMemoryJournal()
-        self.publisher = RecordingPublisher()
-        self.service = InterviewSessionService(
-            journal=self.journal,
-            lock=InMemoryLock(),
-            evaluator=ScriptedEvaluator(),
-            interviewer=ScriptedInterviewer(),
-            cv_provider=FakeCvProvider(CVData()),
-            completed_publisher=self.publisher,
-            completion_outbox=InMemoryCompletionOutbox(),
-            presence=InMemoryPresence(),
-        )
+    def __init__(
+        self, context: AssessmentContext, error: Exception | None = None, cv: CVData | None = CVData()
+    ) -> None:
+        self.stack = FakeStack(context=context, context_error=error, cv=cv)
+        self.context_client = self.stack.context_client
+        self.journal = self.stack.event_repository
+        self.publisher = self.stack.publisher
 
     def client(self) -> TestClient:
         app = FastAPI()
         app.include_router(router)
-        app.state.assessment_context_client = self.context_client
-        app.state.interview_session_service = self.service
+        app.state.container = self.stack.container
         return TestClient(app)
 
 
@@ -238,8 +206,7 @@ def test_context_failures_are_reported(context: AssessmentContext, error: Except
 
 
 def test_missing_cv_for_a_required_policy_closes_the_connection(context: AssessmentContext) -> None:
-    backend = Backend(context)
-    backend.service._cv_provider = FakeCvProvider(None)
+    backend = Backend(context, cv=None)
 
     with backend.client().websocket_connect(URL) as websocket:
         websocket.send_json(hello(mint_interview_token(context.attempt_id)))

@@ -1,14 +1,14 @@
 import asyncio
 
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
-from src.domain.interfaces.completion_outbox import ICompletionOutbox
+from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
 from src.logger import app_logger
 
 
 class CompletionOutboxDispatcher:
     def __init__(
         self,
-        outbox: ICompletionOutbox,
+        outbox: ICompletionOutboxRepository,
         publisher: IAssessmentCompletedPublisher,
         interval_seconds: float = 30.0,
         batch_size: int = 20,

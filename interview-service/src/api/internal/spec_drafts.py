@@ -1,13 +1,8 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends
 from shared_models.assessment import AssessmentTemplateSnapshot, TemplateDraftRequest
 
-from src.api.internal.auth import require_internal_service
-from src.application.interview.spec_service import SpecDraftService
-from src.domain.interview.spec_builder import EmptySpecDraftError
-from src.logger import app_logger
+from src.api.dependencies.container import ContainerDep
+from src.api.security import require_internal_service
 
 router = APIRouter(
     prefix="/api/internal/spec-drafts",
@@ -16,21 +11,6 @@ router = APIRouter(
 )
 
 
-def get_spec_service(request: Request) -> SpecDraftService:
-    return request.app.state.spec_draft_service
-
-
 @router.post("", response_model=AssessmentTemplateSnapshot)
-async def create_spec_draft(
-    body: TemplateDraftRequest,
-    service: Annotated[SpecDraftService, Depends(get_spec_service)],
-) -> AssessmentTemplateSnapshot:
-    try:
-        return await service.create_draft(body)
-    except (EmptySpecDraftError, ValidationError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No usable draft produced"
-        ) from exc
-    except Exception as exc:
-        app_logger.exception("Creating a specification draft failed")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Draft generation failed") from exc
+async def create_spec_draft(body: TemplateDraftRequest, container: ContainerDep) -> AssessmentTemplateSnapshot:
+    return await container.create_template_draft_use_case(body)

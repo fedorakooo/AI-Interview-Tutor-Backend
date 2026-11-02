@@ -12,25 +12,21 @@ from shared_models.assessment import (
     InterviewerMessage,
     SessionCompleted,
     SessionEvent,
-    SessionPaused,
     SessionStarted,
     fold_events,
 )
-from shared_models.assessment.session_events import MessageKind, PauseReason
-from shared_models.assessment.session_state import SessionState, SessionStatus
+from shared_models.assessment.session_events import MessageKind
+from shared_models.assessment.session_state import SessionState
 from shared_models.cv.cv_data import CVData
 
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
-from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionCompletedError
 from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
-from src.domain.interfaces.candidate_cv_provider import ICandidateCvProvider
-from src.domain.interfaces.completion_outbox import ICompletionOutbox
-from src.domain.interfaces.event_journal import IEventJournal
+from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
+from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
+from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
 from src.domain.interfaces.interviewer_agent import IInterviewerAgent
-from src.domain.interfaces.session_lock import ISessionLock
-from src.domain.interfaces.session_presence import ISessionPresence
 from src.domain.interview.dto import EvaluationRequest, EvaluationResult, InterviewerRequest
 from src.domain.interview.engine import ASKING_KINDS, AskFocus, AskIntro, Complete, InterviewEngine, NextAction
 from src.domain.interview.evidence import build_evidence_items
@@ -51,109 +47,29 @@ class MessageDelta:
 SessionOutput = MessageDelta | InterviewerMessage | SessionCompleted
 
 
-class InterviewSessionService:
+class InterviewTurnService:
     def __init__(
         self,
-        journal: IEventJournal,
-        lock: ISessionLock,
+        event_repository: IInterviewEventRepository,
         evaluator: IAnswerEvaluator,
         interviewer: IInterviewerAgent,
-        cv_provider: ICandidateCvProvider,
+        cv_repository: ICandidateCvRepository,
         completed_publisher: IAssessmentCompletedPublisher,
-        completion_outbox: ICompletionOutbox,
-        presence: ISessionPresence,
+        completion_outbox_repository: ICompletionOutboxRepository,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self._journal = journal
-        self._lock = lock
+        self._event_repository = event_repository
         self._evaluator = evaluator
         self._interviewer = interviewer
-        self._cv_provider = cv_provider
+        self._cv_repository = cv_repository
         self._completed_publisher = completed_publisher
-        self._completion_outbox = completion_outbox
-        self._presence = presence
+        self._completion_outbox = completion_outbox_repository
         self._clock = clock
         self._cv_cache: dict[UUID, CVData] = {}
 
-    async def list_events(self, connection: InterviewConnection) -> list[SessionEvent]:
-        return await self._journal.list_events(str(connection.attempt_id))
-
-    async def open_session(self, connection: InterviewConnection) -> AsyncIterator[SessionOutput]:
-        session_id = str(connection.attempt_id)
-        async with self._lock.hold(session_id):
-            events = await self._journal.list_events(session_id)
-            if not events:
-                events = [await self._start_session(connection, session_id)]
-            state = fold_events(events)
-            if state.status == SessionStatus.COMPLETED:
-                await self._publish_completion(connection, session_id)
-                return
-            if InterviewEngine(connection.context.template).pending_question(state) is not None:
-                return
-            async for output in self._advance(connection, events, uuid4()):
-                yield output
-
-    async def handle_answer(
-        self, connection: InterviewConnection, turn_id: UUID, text: str
-    ) -> AsyncIterator[SessionOutput]:
-        session_id = str(connection.attempt_id)
-        async with self._lock.hold(session_id):
-            events = await self._journal.list_events(session_id)
-            if not events:
-                raise NoPendingQuestionError()
-            state = fold_events(events)
-            if state.status == SessionStatus.COMPLETED:
-                raise SessionCompletedError()
-
-            existing = self._find_answer(events, turn_id)
-            if existing is not None:
-                replies = self._replies_to(events, existing)
-                if replies:
-                    for reply in replies:
-                        yield reply
-                    return
-            else:
-                if InterviewEngine(connection.context.template).pending_question(state) is None:
-                    raise NoPendingQuestionError()
-                existing = CandidateMessage(
-                    event_id=uuid4(),
-                    session_id=session_id,
-                    seq=state.last_seq + 1,
-                    occurred_at=self._clock(),
-                    turn_id=turn_id,
-                    text=text,
-                )
-                await self._journal.append(existing)
-                events.append(existing)
-
-            await self._record_evidence(connection, events, existing)
-            async for output in self._advance(connection, events, turn_id):
-                yield output
-
-    async def register_connection(self, connection: InterviewConnection) -> str:
-        return await self._presence.claim(str(connection.attempt_id))
-
-    async def pause_session(self, connection: InterviewConnection, token: str) -> None:
-        session_id = str(connection.attempt_id)
-        if not await self._presence.release(session_id, token):
-            return
-        async with self._lock.hold(session_id):
-            events = await self._journal.list_events(session_id)
-            if not events or fold_events(events).status != SessionStatus.IN_PROGRESS:
-                return
-            await self._journal.append(
-                SessionPaused(
-                    event_id=uuid4(),
-                    session_id=session_id,
-                    seq=events[-1].seq + 1,
-                    occurred_at=self._clock(),
-                    reason=PauseReason.DISCONNECT,
-                )
-            )
-
-    async def _start_session(self, connection: InterviewConnection, session_id: str) -> SessionStarted:
+    async def start_session(self, connection: InterviewConnection, session_id: str) -> SessionStarted:
         context = connection.context
-        cv = await self._load_cv(connection)
+        cv = await self.load_cv(connection)
         started = SessionStarted(
             event_id=uuid4(),
             session_id=session_id,
@@ -163,17 +79,17 @@ class InterviewSessionService:
             template_version=context.template_version,
             cv_attached=cv is not None,
         )
-        await self._journal.append(started)
+        await self._event_repository.append(started)
         return started
 
-    async def _load_cv(self, connection: InterviewConnection) -> CVData | None:
+    async def load_cv(self, connection: InterviewConnection) -> CVData | None:
         context = connection.context
         if context.cv_correlation_id is None:
             return None
         cached = self._cv_cache.get(context.cv_correlation_id)
         if cached is not None:
             return cached
-        cv = await self._cv_provider.get(context.cv_correlation_id)
+        cv = await self._cv_repository.get(context.cv_correlation_id)
         if cv is None and context.cv_policy == CvPolicy.REQUIRED:
             raise AssessmentNotReadyError()
         if cv is not None:
@@ -183,13 +99,11 @@ class InterviewSessionService:
         return cv
 
     @staticmethod
-    def _find_answer(events: list[SessionEvent], turn_id: UUID) -> CandidateMessage | None:
+    def find_answer(events: list[SessionEvent], turn_id: UUID) -> CandidateMessage | None:
         return next((e for e in events if isinstance(e, CandidateMessage) and e.turn_id == turn_id), None)
 
     @staticmethod
-    def _replies_to(
-        events: list[SessionEvent], answer: CandidateMessage
-    ) -> list[InterviewerMessage | SessionCompleted]:
+    def replies_to(events: list[SessionEvent], answer: CandidateMessage) -> list[InterviewerMessage | SessionCompleted]:
         replies: list[InterviewerMessage | SessionCompleted] = []
         for event in events:
             if event.seq <= answer.seq:
@@ -200,7 +114,7 @@ class InterviewSessionService:
                 replies.append(event)
         return replies
 
-    async def _record_evidence(
+    async def record_evidence(
         self, connection: InterviewConnection, events: list[SessionEvent], answer: CandidateMessage
     ) -> None:
         state = fold_events(events)
@@ -237,7 +151,7 @@ class InterviewSessionService:
                 occurred_at=self._clock(),
                 evidence=item,
             )
-            await self._journal.append(event)
+            await self._event_repository.append(event)
             events.append(event)
 
         state = fold_events(events)
@@ -255,16 +169,16 @@ class InterviewSessionService:
                 evidence_count=count,
                 covered_must_cover=covered,
             )
-            await self._journal.append(event)
+            await self._event_repository.append(event)
             events.append(event)
 
-    async def _advance(
+    async def advance(
         self, connection: InterviewConnection, events: list[SessionEvent], turn_id: UUID
     ) -> AsyncIterator[SessionOutput]:
         template = connection.context.template
         state = fold_events(events)
         action = InterviewEngine(template).next_action(state, state.active_elapsed(self._clock()))
-        cv = await self._load_cv(connection) if state.cv_attached else None
+        cv = await self.load_cv(connection) if state.cv_attached else None
         request = self._interviewer_request(connection, state, action, cv)
 
         message_id = uuid4()
@@ -287,7 +201,7 @@ class InterviewSessionService:
             focus_id=action.focus_id if isinstance(action, AskFocus) else None,
             custom_question_index=action.custom_question_index if isinstance(action, AskFocus) else None,
         )
-        await self._journal.append(message)
+        await self._event_repository.append(message)
         events.append(message)
         yield message
 
@@ -299,10 +213,10 @@ class InterviewSessionService:
                 occurred_at=self._clock(),
                 reason=action.reason,
             )
-            await self._journal.append(completed)
+            await self._event_repository.append(completed)
             events.append(completed)
             yield completed
-            await self._publish_completion(connection, state.session_id)
+            await self.publish_completion(connection, state.session_id)
 
     @staticmethod
     def _message_kind(action: NextAction) -> MessageKind:
@@ -338,7 +252,7 @@ class InterviewSessionService:
             transcript=tail,
         )
 
-    async def _publish_completion(self, connection: InterviewConnection, session_id: str) -> None:
+    async def publish_completion(self, connection: InterviewConnection, session_id: str) -> None:
         context = connection.context
         event = AssessmentCompleted(
             event_id=uuid5(COMPLETION_NAMESPACE, f"{session_id}/completed"),

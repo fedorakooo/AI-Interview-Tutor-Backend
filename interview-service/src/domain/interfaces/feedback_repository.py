@@ -4,7 +4,7 @@ from uuid import UUID
 from shared_models.assessment import FeedbackView
 
 
-class IFeedbackStore(ABC):
+class IFeedbackRepository(ABC):
     @abstractmethod
     async def latest(self, attempt_id: UUID) -> FeedbackView | None:
         """Return the newest stored feedback version of an attempt."""

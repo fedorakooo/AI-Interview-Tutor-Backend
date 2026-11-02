@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from shared_models.assessment import SessionEvent
 
 
-class IEventJournal(ABC):
+class IInterviewEventRepository(ABC):
     @abstractmethod
     async def append(self, event: SessionEvent) -> None:
         """Append an event to the session journal, rejecting a duplicate sequence number."""

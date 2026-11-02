@@ -6,14 +6,11 @@ from shared_models.assessment import (
 )
 from shared_models.assessment.contracts import slugify_focus_id
 
+from src.domain.exceptions.spec_errors import EmptySpecDraftError
 from src.domain.interview.spec_dto import DraftFocus, SpecDraft
 
 MAX_FOCUS_AREAS = 10
 MAX_LIST_ITEMS = 10
-
-
-class EmptySpecDraftError(Exception):
-    pass
 
 
 def build_template(draft: SpecDraft, request: TemplateDraftRequest) -> AssessmentTemplateSnapshot:
