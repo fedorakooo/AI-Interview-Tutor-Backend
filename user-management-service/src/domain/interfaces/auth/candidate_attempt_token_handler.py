@@ -19,3 +19,7 @@ class ICandidateAttemptTokenHandler(ABC):
     @abstractmethod
     def verify(self, token: str, expected_attempt_id: str) -> CandidateAttemptTokenPayload:
         """Verify audience, scope, expiry, and the attempt path binding."""
+
+    @abstractmethod
+    def mint_interview_token(self, attempt_id: str) -> str:
+        """Create a short-lived token that opens the interview session of one attempt."""

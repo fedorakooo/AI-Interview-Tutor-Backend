@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
-from shared_models.assessment.contracts import InvitationStatus
+from shared_models.assessment.contracts import AttemptStatus, InvitationStatus
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.assessment import get_invitation_token_handler
@@ -15,9 +15,9 @@ from src.api.dependencies.s3 import get_s3_client
 from src.application.use_cases.assessments import AssessmentFlowError, PublicInvitationUseCase, UploadAttemptCVUseCase
 from src.domain.interfaces.auth.candidate_attempt_token_handler import ICandidateAttemptTokenHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
-from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 from src.domain.interfaces.rabbitmq.rabbitmq_producer import IRabbitMQProducer
 from src.domain.interfaces.storage.s3_client import IS3Client
+from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 
 router = APIRouter(prefix="/api/public", tags=["Candidate assessment"])
 candidate_bearer = HTTPBearer()
@@ -44,6 +44,10 @@ class StartAttemptResponse(BaseModel):
 class AttemptProgress(BaseModel):
     status: str
     cv_status: str | None = None
+
+
+class InterviewTokenResponse(BaseModel):
+    interview_token: str
 
 
 class AttemptCVResponse(BaseModel):
@@ -129,3 +133,24 @@ async def upload_attempt_cv(
     except AssessmentFlowError as exc:
         raise _public_error() from exc
     return AttemptCVResponse(correlation_id=upload.correlation_id, status=upload.status)
+
+
+@router.post("/attempts/{attempt_id}/interview-token", response_model=InterviewTokenResponse)
+async def issue_interview_token(
+    attempt_id: UUID,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(candidate_bearer)],
+    token_handler: Annotated[ICandidateAttemptTokenHandler, Depends(get_candidate_attempt_token_handler)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+) -> InterviewTokenResponse:
+    _enabled()
+    try:
+        token_handler.verify(credentials.credentials, str(attempt_id))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid attempt token") from exc
+    async with uow:
+        attempt = await uow.assessment_repository.get_attempt(attempt_id)
+    if attempt is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt unavailable")
+    if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Attempt is not ready")
+    return InterviewTokenResponse(interview_token=token_handler.mint_interview_token(str(attempt_id)))

@@ -106,6 +106,7 @@ class AssessmentSettings(BaseSettings):
     invitation_token_pepper: str = ""
     invitation_ttl_hours: int = 48
     candidate_attempt_token_expire_minutes: int = 240
+    candidate_interview_token_expire_minutes: int = 30
     # Required for service-to-service routes.  An empty value deliberately
     # disables those routes rather than creating a development backdoor.
     internal_service_token: str = ""
