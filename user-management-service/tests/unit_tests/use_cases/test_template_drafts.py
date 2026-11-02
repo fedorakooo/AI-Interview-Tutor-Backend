@@ -164,3 +164,23 @@ async def test_spec_client_maps_failures_to_unavailable():
 
     with pytest.raises(InterviewReportUnavailableError):
         await client.create_template_draft(TemplateDraftRequest(brief="x"))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("vacancy_language", ["English", "EN", "e"])
+async def test_a_vacancy_language_that_is_not_a_code_gives_a_domain_error_instead_of_a_crash(vacancy_language):
+    from src.application.use_cases.template_drafts import InvalidDraftRequestError
+
+    record, client = vacancy(), FakeSpecClient()
+    record.language = vacancy_language
+
+    with pytest.raises(InvalidDraftRequestError):
+        await GenerateTemplateDraftUseCase(FakeUow(record), client)(
+            record.organization_id, record.id, uuid4(), "brief", None, CvPolicy.REQUIRED, False
+        )
+    assert client.requests == []
+
+    await GenerateTemplateDraftUseCase(FakeUow(record), client)(
+        record.organization_id, record.id, uuid4(), "brief", "en", CvPolicy.REQUIRED, False
+    )
+    assert client.requests[0].language == "en"

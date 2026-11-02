@@ -20,5 +20,5 @@ async def require_internal_service(
     """
 
     configured = settings.assessment_settings.internal_service_token
-    if not configured or token is None or not hmac.compare_digest(token, configured):
+    if not configured or token is None or not hmac.compare_digest(token.encode(), configured.encode()):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal credentials")

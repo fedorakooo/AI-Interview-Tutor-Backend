@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -11,8 +11,10 @@ from shared_models.assessment.contracts import (
     CvPolicy,
     RubricCriterion,
 )
+from src.domain.exceptions.not_found_error import NotFoundError
 from src.application.use_cases.assessments import (
     AssessmentFlowError,
+    EnsureInterviewAccessUseCase,
     GetAssessmentContextUseCase,
     RegisterAssessmentCompletionUseCase,
     SkipAttemptCVUseCase,
@@ -82,12 +84,14 @@ def _state():
         vacancy_id=vacancy_id,
         template_version=1,
         status="in_progress",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     attempt = SimpleNamespace(
         id=attempt_id,
         status=AttemptStatus.READY.value,
         cv_correlation_id=uuid4(),
         candidate_display_name="Ada Candidate",
+        candidate_email_normalized="ada@example.com",
         completed_at=None,
         interview_session_id=None,
         report_reference=None,
@@ -275,3 +279,67 @@ async def test_cv_cannot_be_skipped_when_it_is_required_or_already_uploaded(poli
     with pytest.raises(AssessmentFlowError):
         await use_case(attempt.id)
     assert attempt.status == status
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invitation_status", ["revoked", "expired"])
+async def test_context_and_interview_access_are_refused_for_a_revoked_or_expired_invitation(invitation_status):
+    attempt, use_case, _ = _context_use_case(CvPolicy.NONE)
+    repository = use_case._uow.assessment_repository
+    repository.invitation.status = invitation_status
+
+    with pytest.raises(AssessmentFlowError):
+        await use_case(attempt.id)
+    with pytest.raises(AssessmentFlowError):
+        await EnsureInterviewAccessUseCase(use_case._uow)(attempt.id)
+
+
+@pytest.mark.asyncio
+async def test_context_and_interview_access_are_refused_after_the_invitation_deadline():
+    attempt, use_case, _ = _context_use_case(CvPolicy.NONE)
+    use_case._uow.assessment_repository.invitation.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+
+    with pytest.raises(AssessmentFlowError):
+        await use_case(attempt.id)
+    with pytest.raises(AssessmentFlowError):
+        await EnsureInterviewAccessUseCase(use_case._uow)(attempt.id)
+
+
+@pytest.mark.asyncio
+async def test_interview_access_is_allowed_for_a_ready_attempt_and_refused_otherwise():
+    attempt, use_case, _ = _context_use_case(CvPolicy.NONE)
+    access = EnsureInterviewAccessUseCase(use_case._uow)
+
+    await access(attempt.id)
+    with pytest.raises(NotFoundError):
+        await access(uuid4())
+    attempt.status = AttemptStatus.CV_PROCESSING.value
+    with pytest.raises(AssessmentFlowError):
+        await access(attempt.id)
+
+
+@pytest.mark.asyncio
+async def test_completed_attempt_context_stays_available_after_the_invitation_expires():
+    attempt, use_case, _ = _context_use_case(CvPolicy.NONE, attempt_status=AttemptStatus.COMPLETED.value)
+    use_case._uow.assessment_repository.invitation.expires_at = datetime.now(UTC) - timedelta(days=30)
+
+    assert (await use_case(attempt.id)).attempt_id == attempt.id
+
+
+@pytest.mark.asyncio
+async def test_a_repeated_completion_event_is_ignored_after_the_attempt_was_erased():
+    from src.application.use_cases.data_erasure import erased_email
+
+    attempt, invitation = _state()
+    repository = _AssessmentRepository(attempt, invitation)
+    use_case = RegisterAssessmentCompletionUseCase(_Uow(repository))
+    event = _event(attempt, invitation)
+    await use_case(event)
+    attempt.candidate_email_normalized = erased_email(attempt.id)
+    attempt.report_reference = None
+    attempt.interview_session_id = None
+
+    redelivered = event.model_copy(update={"event_id": uuid4()})
+
+    assert await use_case(redelivered) is attempt
+    assert attempt.report_reference is None

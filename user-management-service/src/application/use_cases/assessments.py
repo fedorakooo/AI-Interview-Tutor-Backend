@@ -6,6 +6,7 @@ from shared_models.messaging.common import AnalysisStatus
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
 
 from src.config import settings
+from src.application.use_cases.data_erasure import is_erased
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.postgres.schemas.assessment_flow import CandidateAttemptORM, CandidateInvitationORM
@@ -19,6 +20,12 @@ class AssessmentFlowError(Exception):
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def invitation_is_usable(invitation) -> bool:
+    if invitation.status in {InvitationStatus.REVOKED.value, InvitationStatus.EXPIRED.value}:
+        return False
+    return invitation.expires_at > utcnow()
 
 
 class CreateInvitationUseCase:
@@ -173,6 +180,23 @@ class SkipAttemptCVUseCase:
             return attempt
 
 
+class EnsureInterviewAccessUseCase:
+    """Check that an attempt may start or resume its interview."""
+
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, attempt_id: UUID) -> None:
+        async with self._uow:
+            row = await self._uow.assessment_repository.get_attempt_with_invitation(attempt_id)
+            if row is None:
+                raise NotFoundError("Assessment attempt not found")
+            attempt, invitation = row
+            ready = attempt.status in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}
+            if not ready or not invitation_is_usable(invitation):
+                raise AssessmentFlowError()
+
+
 class UploadAttemptCVUseCase:
     """Persist and enqueue an anonymous candidate CV under its attempt boundary."""
 
@@ -247,7 +271,9 @@ class GetAssessmentContextUseCase:
             )
             if vacancy is None or template is None:
                 raise AssessmentFlowError()
-            if attempt.status != AttemptStatus.COMPLETED.value and vacancy.status != VacancyStatus.ACTIVE:
+            if attempt.status != AttemptStatus.COMPLETED.value and (
+                vacancy.status != VacancyStatus.ACTIVE or not invitation_is_usable(invitation)
+            ):
                 raise AssessmentFlowError()
             if template.snapshot.cv_policy == CvPolicy.REQUIRED and attempt.cv_correlation_id is None:
                 raise AssessmentFlowError()
@@ -288,6 +314,8 @@ class RegisterAssessmentCompletionUseCase:
             ):
                 raise AssessmentFlowError()
             if attempt.status == AttemptStatus.COMPLETED.value:
+                if is_erased(attempt.candidate_email_normalized):
+                    return attempt
                 if attempt.interview_session_id != event.session_id or attempt.report_reference != event.report_reference:
                     raise AssessmentFlowError()
                 return attempt

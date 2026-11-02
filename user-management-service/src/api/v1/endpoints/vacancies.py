@@ -51,7 +51,7 @@ from src.application.use_cases.candidate_feedback import (
     FeedbackNotAvailableError,
     FeedbackVersionMismatchError,
 )
-from src.application.use_cases.template_drafts import GenerateTemplateDraftUseCase
+from src.application.use_cases.template_drafts import GenerateTemplateDraftUseCase, InvalidDraftRequestError
 from src.domain.interfaces.reports.interview_data_eraser import IInterviewDataEraser
 from src.domain.interfaces.reports.interview_feedback_client import IInterviewFeedbackClient
 from src.domain.interfaces.storage.s3_client import IS3Client
@@ -235,6 +235,11 @@ async def create_template_draft(
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vacancy not found") from exc
+    except InvalidDraftRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Set the draft language as a code like en or ru, or fix the vacancy language",
+        ) from exc
     except (InterviewReportNotFoundError, InterviewReportNotReadyError, InterviewReportUnavailableError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Draft service unavailable") from exc
 
