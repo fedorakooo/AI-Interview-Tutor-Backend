@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
+from src.application.interview.erasure_service import AttemptErasureService
 from src.application.interview.feedback_service import CandidateFeedbackService
 from src.application.interview.report_service import AssessmentReportService
 from src.application.interview.session_service import InterviewSessionService
@@ -16,6 +17,7 @@ from src.infrastructure.ai.models import parse_model_specs
 from src.infrastructure.ai.spec_agent import PydanticSpecDrafter
 from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
+from src.infrastructure.mongo_attempt_data_eraser import MongoAttemptDataEraser
 from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
 from src.infrastructure.mongo_event_journal import MongoEventJournal
 from src.infrastructure.mongo_feedback_store import MongoFeedbackStore
@@ -70,6 +72,17 @@ async def lifespan(app: FastAPI):
             journal=journal,
             store=assessment_store,
             text_writer=PydanticAssessmentTextWriter(parse_model_specs(settings.interview_report_models)),
+        )
+        database = mongo_client[mongo_settings.db_name]
+        app.state.attempt_erasure_service = AttemptErasureService(
+            RedisSessionLock(create_redis_client()),
+            MongoAttemptDataEraser(
+                events=database[mongo_settings.interview_events_collection_name],
+                assessments=database[mongo_settings.interview_assessments_collection_name],
+                reviews=database[mongo_settings.interview_assessment_reviews_collection_name],
+                feedback=database[mongo_settings.interview_feedback_collection_name],
+                cv_documents=database[mongo_settings.cv_analysis_collection_name],
+            ),
         )
         app.state.candidate_feedback_service = CandidateFeedbackService(
             app.state.assessment_report_service,

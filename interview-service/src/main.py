@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.exception_handler import exception_container
+from src.api.internal.erasure import router as erasure_router
 from src.api.internal.feedback import router as feedback_router
 from src.api.internal.reports import router as reports_router
 from src.api.internal.spec_drafts import router as spec_drafts_router
@@ -31,6 +32,7 @@ app.include_router(router)
 app.include_router(interview_router)
 app.include_router(reports_router)
 app.include_router(feedback_router)
+app.include_router(erasure_router)
 app.include_router(spec_drafts_router)
 
 exception_container(app)
