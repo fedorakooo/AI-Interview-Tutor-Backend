@@ -35,6 +35,8 @@ class MongoSettings(BaseSettings):
     cv_user_id_field: str = "user_id"
     interview_sessions_collection_name: str = "interview_sessions"
     interview_events_collection_name: str = "interview_events"
+    interview_assessments_collection_name: str = "interview_assessments"
+    interview_assessment_reviews_collection_name: str = "interview_assessment_reviews"
 
     @property
     def url(self) -> str:
@@ -178,6 +180,8 @@ class Settings(BaseSettings):
     instance_settings: InstanceSettings = InstanceSettings()
     user_management_settings: UserManagementSettings = UserManagementSettings()
     interview_hello_timeout_seconds: float = 10.0
+    internal_service_token: str = Field(default="", validation_alias="INTERNAL_SERVICE_TOKEN")
+    interview_report_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_REPORT_MODELS")
     interview_evaluator_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_EVALUATOR_MODELS")
     interview_interviewer_models: str = Field(
         default="openai:gpt-4o-mini", validation_alias="INTERVIEW_INTERVIEWER_MODELS"

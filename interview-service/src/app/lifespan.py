@@ -3,12 +3,15 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
+from src.application.interview.report_service import AssessmentReportService
 from src.application.interview.session_service import InterviewSessionService
 from src.config import settings
+from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter
 from src.infrastructure.ai.evaluator import PydanticAnswerEvaluator
 from src.infrastructure.ai.interviewer import PydanticInterviewerAgent
 from src.infrastructure.ai.models import parse_model_specs
 from src.infrastructure.mongo import MongoRepository
+from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
 from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
 from src.infrastructure.mongo_event_journal import MongoEventJournal
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
@@ -25,6 +28,11 @@ async def lifespan(app: FastAPI):
     mongo_client = AsyncIOMotorClient(mongo_settings.url)
     journal = MongoEventJournal(mongo_client[mongo_settings.db_name][mongo_settings.interview_events_collection_name])
     await journal.ensure_indexes()
+    assessment_store = MongoAssessmentStore(
+        mongo_client[mongo_settings.db_name][mongo_settings.interview_assessments_collection_name],
+        mongo_client[mongo_settings.db_name][mongo_settings.interview_assessment_reviews_collection_name],
+    )
+    await assessment_store.ensure_indexes()
 
     async with httpx.AsyncClient(timeout=user_management.timeout_seconds) as http_client:
         app.state.assessment_context_client = UserManagementAssessmentContextClient(
@@ -48,6 +56,11 @@ async def lifespan(app: FastAPI):
                 amqp_url=settings.rabbitmq_settings.url,
                 queue_name=settings.rabbitmq_settings.assessment_completed_queue_name,
             ),
+        )
+        app.state.assessment_report_service = AssessmentReportService(
+            journal=journal,
+            store=assessment_store,
+            text_writer=PydanticAssessmentTextWriter(parse_model_specs(settings.interview_report_models)),
         )
         async with legacy_runtime(app):
             yield

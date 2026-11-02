@@ -3,17 +3,20 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from uuid import UUID
 
-from shared_models.assessment import AssessmentCompleted, SessionEvent
+from shared_models.assessment import Assessment, AssessmentCompleted, ReviewEntry, SessionEvent
 from shared_models.cv.cv_data import CVData
 from src.domain.exceptions.session_errors import EventSeqConflictError, SessionBusyError
 from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
+from src.domain.interfaces.assessment_store import IAssessmentStore
+from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
 from src.domain.interfaces.candidate_cv_provider import ICandidateCvProvider
 from src.domain.interfaces.event_journal import IEventJournal
 from src.domain.interfaces.interviewer_agent import IInterviewerAgent
 from src.domain.interfaces.session_lock import ISessionLock
 from src.domain.interview.dto import EvaluationRequest, EvaluationResult, EvidenceDraft, InterviewerRequest
 from src.domain.interview.engine import AskFocus, AskIntro
+from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts
 
 
 class InMemoryJournal(IEventJournal):
@@ -114,3 +117,38 @@ class RecordingPublisher(IAssessmentCompletedPublisher):
 
 
 FIXED_NOW = datetime(2026, 11, 2, 10, 0, tzinfo=UTC)
+
+
+class InMemoryAssessmentStore(IAssessmentStore):
+    def __init__(self) -> None:
+        self.assessments: dict[UUID, Assessment] = {}
+        self.reviews: list[tuple[UUID, str, ReviewEntry]] = []
+
+    async def get(self, attempt_id: UUID) -> Assessment | None:
+        return self.assessments.get(attempt_id)
+
+    async def save(self, assessment: Assessment) -> None:
+        self.assessments.setdefault(assessment.attempt_id, assessment)
+
+    async def add_review(self, attempt_id: UUID, focus_id: str, entry: ReviewEntry) -> None:
+        self.reviews.append((attempt_id, focus_id, entry))
+
+    async def list_reviews(self, attempt_id: UUID) -> dict[str, list[ReviewEntry]]:
+        grouped: dict[str, list[ReviewEntry]] = {}
+        for stored_attempt, focus_id, entry in self.reviews:
+            if stored_attempt == attempt_id:
+                grouped.setdefault(focus_id, []).append(entry)
+        return grouped
+
+
+class ScriptedTextWriter(IAssessmentTextWriter):
+    def __init__(self, texts: AssessmentTexts | None = None) -> None:
+        self.texts = texts
+        self.digests: list[AssessmentDigest] = []
+        self.fail = False
+
+    async def write(self, digest: AssessmentDigest) -> AssessmentTexts:
+        self.digests.append(digest)
+        if self.fail or self.texts is None:
+            raise RuntimeError("model unavailable")
+        return self.texts

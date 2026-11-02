@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.exception_handler import exception_container
+from src.api.internal.reports import router as reports_router
 from src.api.interview.endpoints import router as interview_router
 from src.app.lifespan import lifespan
 from src.config import settings
@@ -26,6 +27,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(interview_router)
+app.include_router(reports_router)
 
 exception_container(app)
 
