@@ -66,17 +66,6 @@ def build_container(
         settings.rabbitmq_settings.practice_plan_ready_queue_name,
     )
 
-    from src.application.use_cases.worker_use_cases import HandleInterviewCompletedUseCase
-
-    handle_interview_use_case = HandleInterviewCompletedUseCase(
-        plan_repository,
-        profile_repository,
-        context_builder,
-        context_reader,
-        publisher,
-        settings.rabbitmq_settings.practice_plan_queue_name,
-    )
-
     return (
         AppContainer(
             get_profile_use_case=GetProfileUseCase(profile_repository),
@@ -104,7 +93,6 @@ def build_container(
             mongo_client=mongo_client,
         ),
         generate_plan_use_case,
-        handle_interview_use_case,
         plan_repository,
         attempt_repository,
         profile_repository,

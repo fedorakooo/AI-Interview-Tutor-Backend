@@ -11,15 +11,13 @@ from src.logger import app_logger
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     mongo_client = MongoClientFactory.create(settings.mongo_settings.url)
-    container, generate_plan_use_case, handle_interview_use_case, plan_repo, attempt_repo, profile_repo = (
-        build_container(mongo_client)
-    )
+    container, generate_plan_use_case, plan_repo, attempt_repo, profile_repo = build_container(mongo_client)
 
     await plan_repo.ensure_indexes()
     await attempt_repo.ensure_indexes()
     await profile_repo.ensure_indexes()
 
-    consumers = PracticeConsumers(generate_plan_use_case, handle_interview_use_case)
+    consumers = PracticeConsumers(generate_plan_use_case)
     await consumers.start()
 
     app.state.container = container

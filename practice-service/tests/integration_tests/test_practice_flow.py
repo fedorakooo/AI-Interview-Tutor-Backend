@@ -1,14 +1,11 @@
 from datetime import UTC, date, datetime
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import pytest
-from shared_models.interview.report import InterviewReport, SkillScore
-from shared_models.interview.session import InterviewSessionDocument, InterviewSessionStatus
-from shared_models.practice.messaging import InterviewCompletedEvent, PracticePlanJobMessage
-from shared_models.practice.plan import PlanSource, PlanStatus
+from shared_models.practice.messaging import PracticePlanJobMessage
+from shared_models.practice.plan import PlanStatus
 from shared_models.practice.profile import UserPracticeProfile
 from src.config import settings
-from src.infrastructure.mongo.client import MongoClientFactory
 
 
 @pytest.mark.asyncio
@@ -78,54 +75,6 @@ async def test_plan_generation_flow(practice_test_env, access_token):
     assert open_body["grading"]["graded_by"] == "llm"
     assert open_body["reference_answer"] == "Representational state transfer"
     env["mock_answer_grader"].grade_open_question.assert_awaited()
-
-
-@pytest.mark.asyncio
-async def test_interview_auto_plan_idempotency(practice_test_env, user_id):
-    env = practice_test_env
-    session_id = f"session-{uuid4()}"
-    mongo_client = env["mongo_client"]
-    sessions = MongoClientFactory.get_collection(
-        mongo_client,
-        settings.mongo_settings.db_name,
-        settings.mongo_settings.interview_sessions_collection_name,
-    )
-    session_doc = InterviewSessionDocument(
-        session_id=session_id,
-        user_id=user_id,
-        status=InterviewSessionStatus.COMPLETED,
-        started_at=datetime.now(UTC),
-        completed_at=datetime.now(UTC),
-        overall_stage="completed",
-        report=InterviewReport(
-            summary="Done",
-            weaknesses=["Caching"],
-            skill_scores=[SkillScore(skill="Redis", score=4.0)],
-        ),
-    )
-    await sessions.insert_one(session_doc.to_mongo())
-
-    event = InterviewCompletedEvent(
-        event_id=uuid4(),
-        user_id=UUID(user_id),
-        session_id=session_id,
-        published_at=datetime.now(UTC),
-    )
-
-    first = await env["handle_interview_use_case"].execute(event)
-    assert first is True
-
-    plan = await env["plan_repository"].get_plan_by_interview_session(session_id)
-    assert plan is not None
-    assert plan.source == PlanSource.INTERVIEW
-    assert plan.interview_session_id == session_id
-
-    second = await env["handle_interview_use_case"].execute(event)
-    assert second is False
-
-    plans = await env["plan_repository"].list_plans(user_id)
-    interview_plans = [p for p in plans if p.interview_session_id == session_id]
-    assert len(interview_plans) == 1
 
 
 @pytest.mark.asyncio

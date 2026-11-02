@@ -44,13 +44,11 @@ async def practice_test_env():
         )
     )
 
-    container, generate_plan_use_case, handle_interview_use_case, plan_repo, attempt_repo, profile_repo = (
-        build_container(
-            mongo_client,
-            publisher=mock_publisher,
-            plan_generator=mock_plan_generator,
-            answer_grader=test_answer_grader,
-        )
+    container, generate_plan_use_case, plan_repo, attempt_repo, profile_repo = build_container(
+        mongo_client,
+        publisher=mock_publisher,
+        plan_generator=mock_plan_generator,
+        answer_grader=test_answer_grader,
     )
     await plan_repo.ensure_indexes()
     await attempt_repo.ensure_indexes()
@@ -61,7 +59,6 @@ async def practice_test_env():
     app.state.container = container
     app.state.mongo_client = mongo_client
     app.state.generate_plan_use_case = generate_plan_use_case
-    app.state.handle_interview_use_case = handle_interview_use_case
     app.state.mock_publisher = mock_publisher
     app.state.mock_plan_generator = mock_plan_generator
     app.state.mock_answer_grader = test_answer_grader
@@ -77,7 +74,6 @@ async def practice_test_env():
             "client": client,
             "container": container,
             "generate_plan_use_case": generate_plan_use_case,
-            "handle_interview_use_case": handle_interview_use_case,
             "plan_repository": plan_repo,
             "profile_repository": profile_repo,
             "mock_publisher": mock_publisher,

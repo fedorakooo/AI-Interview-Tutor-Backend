@@ -3,17 +3,14 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
-from pymongo.errors import DuplicateKeyError
-from shared_models.interview.report import InterviewReport
 from shared_models.practice.exercise import ExerciseType, FlashcardRating
-from shared_models.practice.messaging import InterviewCompletedEvent, PlanGenerationRequest, PracticePlanJobMessage
+from shared_models.practice.messaging import PlanGenerationRequest, PracticePlanJobMessage
 from shared_models.practice.plan import PlanContextSnapshot, PlanSource, PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.agent.answer_grader import AnswerGrader
 from src.application.services.practice_services import BuiltPlanContext, ExerciseValidator
 from src.application.use_cases.worker_use_cases import (
     GeneratePlanUseCase,
-    HandleInterviewCompletedUseCase,
     SubmitAttemptUseCase,
 )
 from src.domain.exceptions.practice_errors import AlreadyAttemptedError, PlanGenerationFailedError, PlanNotReadyError
@@ -199,124 +196,6 @@ class TestGeneratePlanUseCase:
         assert queue_name == "practice-plan-ready-stream"
         assert str(pending.plan_id) in payload
 
-
-class TestHandleInterviewCompletedUseCase:
-    @pytest.mark.asyncio
-    async def test_duplicate_session_id_is_idempotent(self) -> None:
-        existing = _ready_plan(source=PlanSource.INTERVIEW, interview_session_id="sess-1")
-        plan_repo = AsyncMock()
-        plan_repo.get_plan_by_interview_session = AsyncMock(return_value=existing)
-        use_case = HandleInterviewCompletedUseCase(
-            plan_repo,
-            AsyncMock(),
-            AsyncMock(),
-            AsyncMock(),
-            AsyncMock(),
-            "queue",
-        )
-
-        result = await use_case.execute(
-            InterviewCompletedEvent(
-                event_id=uuid4(),
-                user_id=existing.user_id,
-                session_id="sess-1",
-                published_at=datetime.now(UTC),
-            )
-        )
-
-        assert result is False
-        plan_repo.create_plan.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_retries_interview_report_lookup(self, monkeypatch) -> None:
-        plan_repo = AsyncMock()
-        plan_repo.get_plan_by_interview_session = AsyncMock(return_value=None)
-        plan_repo.create_plan = AsyncMock()
-        profile_repo = MagicMock()
-        profile_repo.get_profile = AsyncMock(return_value=None)
-        profile_repo.default_profile = _default_profile
-        profile_repo.upsert_profile = AsyncMock()
-        context_reader = AsyncMock()
-        report = InterviewReport(summary="Done", weaknesses=["Redis"], skill_scores=[])
-        from src.infrastructure.mongo.context_reader import InterviewContextData
-
-        interview = InterviewContextData(session_id="sess-2", cv_correlation_id=None, report=report)
-        context_reader.get_interview_by_session = AsyncMock(side_effect=[None, interview])
-        context_builder = AsyncMock()
-        context_builder.build = AsyncMock(return_value=_built_context())
-        publisher = AsyncMock()
-        sleeps: list[float] = []
-
-        async def fake_sleep(seconds: float) -> None:
-            sleeps.append(seconds)
-
-        monkeypatch.setattr("src.application.use_cases.worker_use_cases.asyncio.sleep", fake_sleep)
-        monkeypatch.setattr(
-            "src.application.use_cases.worker_use_cases.settings.practice_settings.interview_report_retry_seconds",
-            2.0,
-        )
-        use_case = HandleInterviewCompletedUseCase(
-            plan_repo,
-            profile_repo,
-            context_builder,
-            context_reader,
-            publisher,
-            "queue",
-        )
-
-        result = await use_case.execute(
-            InterviewCompletedEvent(
-                event_id=uuid4(),
-                user_id=uuid4(),
-                session_id="sess-2",
-                published_at=datetime.now(UTC),
-            )
-        )
-
-        assert result is True
-        assert sleeps == [2.0]
-        assert context_reader.get_interview_by_session.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_duplicate_key_on_create_is_idempotent(self) -> None:
-        plan_repo = AsyncMock()
-        plan_repo.get_plan_by_interview_session = AsyncMock(return_value=None)
-        plan_repo.create_plan = AsyncMock(side_effect=DuplicateKeyError("dup"))
-        profile_repo = MagicMock()
-        profile_repo.get_profile = AsyncMock(return_value=None)
-        profile_repo.default_profile = _default_profile
-        profile_repo.upsert_profile = AsyncMock()
-        context_reader = AsyncMock()
-        from src.infrastructure.mongo.context_reader import InterviewContextData
-
-        context_reader.get_interview_by_session = AsyncMock(
-            return_value=InterviewContextData(
-                session_id="sess-3",
-                cv_correlation_id=None,
-                report=InterviewReport(summary="x"),
-            )
-        )
-        context_builder = AsyncMock()
-        context_builder.build = AsyncMock(return_value=_built_context())
-        use_case = HandleInterviewCompletedUseCase(
-            plan_repo,
-            profile_repo,
-            context_builder,
-            context_reader,
-            AsyncMock(),
-            "queue",
-        )
-
-        result = await use_case.execute(
-            InterviewCompletedEvent(
-                event_id=uuid4(),
-                user_id=uuid4(),
-                session_id="sess-3",
-                published_at=datetime.now(UTC),
-            )
-        )
-
-        assert result is False
 
 
 class TestSubmitAttemptUseCase:
