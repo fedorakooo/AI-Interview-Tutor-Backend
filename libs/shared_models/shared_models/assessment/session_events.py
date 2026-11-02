@@ -64,8 +64,6 @@ class InterviewerMessage(SessionEventBase):
             raise ValueError("Questions must target a focus area")
         if not asks and (self.focus_id is not None or self.custom_question_index is not None):
             raise ValueError("Only questions may reference a focus area")
-        if self.custom_question_index is not None and self.kind != MessageKind.QUESTION:
-            raise ValueError("Only a question can be a custom question")
         return self
 
 

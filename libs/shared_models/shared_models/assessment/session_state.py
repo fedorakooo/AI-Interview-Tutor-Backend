@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
@@ -55,6 +56,7 @@ class SessionState(BaseModel):
     template_version: int
     cv_attached: bool
     status: SessionStatus = SessionStatus.IN_PROGRESS
+    started_at: datetime
     last_seq: int
     last_event_id: UUID
     messages: dict[int, MessageRecord] = Field(default_factory=dict)
@@ -97,6 +99,7 @@ def fold_events(events: Sequence[SessionEvent]) -> SessionState:
         attempt_id=first.attempt_id,
         template_version=first.template_version,
         cv_attached=first.cv_attached,
+        started_at=first.occurred_at,
         last_seq=first.seq,
         last_event_id=first.event_id,
     )
