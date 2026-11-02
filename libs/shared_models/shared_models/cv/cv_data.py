@@ -1,3 +1,5 @@
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shared_models.cv.cv_items import (
@@ -12,9 +14,11 @@ from shared_models.cv.cv_items import (
 class CVData(BaseModel):
     """Structured resume content extracted from a candidate CV."""
 
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
-    user_name: str = Field(min_length=1, max_length=256, description="Full name of the candidate.")
+    user_name: str | None = Field(
+        default=None, min_length=1, max_length=256, description="Full name of the candidate, if stated."
+    )
     specialization: str | None = Field(
         default=None,
         max_length=256,
@@ -36,23 +40,9 @@ class CVData(BaseModel):
     )
     languages: list[LanguageItem] | None = Field(default=None, description="Spoken languages and proficiency.")
 
-    @field_validator("skills", mode="before")
+    @field_validator("user_name", mode="before")
     @classmethod
-    def _coerce_legacy_skills(
-        cls, value: list[SkillItem | str | dict[str, str | None]] | None
-    ) -> list[SkillItem] | None:
-        if value is None:
-            return None
-
-        coerced: list[SkillItem] = []
-        for item in value:
-            if isinstance(item, SkillItem):
-                coerced.append(item)
-            elif isinstance(item, str):
-                coerced.append(SkillItem(name=item))
-            elif isinstance(item, dict):
-                coerced.append(SkillItem.model_validate(item))
-            else:
-                raise TypeError(f"Unsupported skill item type: {type(item)!r}")
-
-        return coerced
+    def _normalize_user_name(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return value.strip() or None
+        return value
