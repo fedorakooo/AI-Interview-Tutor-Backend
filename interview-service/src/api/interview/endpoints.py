@@ -39,7 +39,7 @@ from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
 from src.logger import app_logger
 
-router = APIRouter(prefix="/api/v2/interview", tags=["Interview"])
+router = APIRouter(prefix="/api/v1/interview", tags=["Interview"])
 
 
 async def _send(websocket: WebSocket, message: ServerMessage) -> None:

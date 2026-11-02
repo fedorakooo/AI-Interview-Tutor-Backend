@@ -168,7 +168,7 @@ The service runs recruiter interviews from an interview specification (the vacan
 
 **Entrypoints.** [`src/main.py`](interview-service/src/main.py) mounts the candidate WebSocket and the internal APIs; `/health` and `/health/ready` (Redis and MongoDB checks) serve probes.
 
-**Candidate interview.** WebSocket **`/api/v2/interview/ws`** ([`endpoints.py`](interview-service/src/api/interview/endpoints.py), protocol in [`protocol.py`](interview-service/src/api/interview/protocol.py)).
+**Candidate interview.** WebSocket **`/api/v1/interview/ws`** ([`endpoints.py`](interview-service/src/api/interview/endpoints.py), protocol in [`protocol.py`](interview-service/src/api/interview/protocol.py)).
 
 - The first client message is `hello` with `protocol_version`, the candidate interview `token` (issued by user-management for a ready attempt) and an optional `last_event_id` for resuming.
 - Client messages: `hello`, `candidate_message`, `ping`. Server messages: `ready`, `transcript_entry`, `interviewer_message_started` / `_delta` / `_completed`, `session_completed`, `pong`, `error`.

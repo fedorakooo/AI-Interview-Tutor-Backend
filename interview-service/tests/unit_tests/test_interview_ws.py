@@ -31,7 +31,7 @@ from tests.unit_tests.fakes import (
 )
 from tests.unit_tests.test_open_interview_connection_use_case import mint_interview_token
 
-URL = "/api/v2/interview/ws"
+URL = "/api/v1/interview/ws"
 
 
 class FakeContextClient(IAssessmentContextClient):
