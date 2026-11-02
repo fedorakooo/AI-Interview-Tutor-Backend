@@ -17,3 +17,11 @@ class RefreshTokenPayload(TypedDict):
     id: str
     username: str
     type: TokenType
+
+
+class CandidateInterviewTokenPayload(TypedDict):
+    sub: str
+    aud: str
+    scope: str
+    jti: str
+    type: TokenType
