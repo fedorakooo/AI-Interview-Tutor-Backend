@@ -3,7 +3,6 @@ from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel, ValidationError
-
 from shared_models.assessment import (
     Assessment,
     AssessmentContext,
@@ -308,12 +307,12 @@ class TestAssessmentConsistency:
         with pytest.raises(InconsistentAssessmentError, match="not a candidate message"):
             verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
 
-    def test_verdict_must_match_min_evidence(self, policy: CvPolicy) -> None:
+    def test_verdict_must_match_the_computed_result(self, policy: CvPolicy) -> None:
         assessment = mock_assessment(policy)
         testing = next(i for i, item in enumerate(assessment.focus) if item.focus_id == "testing")
         assessment.focus[testing] = assessment.focus[testing].model_copy(update={"verdict": Verdict.WEAK})
 
-        with pytest.raises(InconsistentAssessmentError, match="min_evidence"):
+        with pytest.raises(InconsistentAssessmentError, match="computed result"):
             verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
 
     def test_incomplete_session_is_rejected(self, policy: CvPolicy) -> None:

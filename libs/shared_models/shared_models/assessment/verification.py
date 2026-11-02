@@ -3,6 +3,7 @@ from collections.abc import Sequence
 from shared_models.assessment.contracts import AssessmentTemplateSnapshot
 from shared_models.assessment.evidence import Verdict
 from shared_models.assessment.report import Assessment
+from shared_models.assessment.scoring import compute_focus_verdict
 from shared_models.assessment.session_events import SessionEvent
 from shared_models.assessment.session_state import (
     InvalidEventLogError,
@@ -63,8 +64,9 @@ def _verify(assessment: Assessment, template: AssessmentTemplateSnapshot, state:
             if logged.get(evidence.evidence_id) != evidence:
                 raise InconsistentAssessmentError(f"Evidence {evidence.evidence_id} is not in the journal")
             verify_evidence(evidence, state.messages)
-        if (len(item.evidence) < focus.min_evidence) != (item.verdict == Verdict.NOT_ASSESSED):
-            raise InconsistentAssessmentError(f"{item.focus_id}: not_assessed must match min_evidence")
+        expected_verdict, expected_confidence = compute_focus_verdict(focus, item.evidence)
+        if (item.verdict, item.confidence) != (expected_verdict, expected_confidence):
+            raise InconsistentAssessmentError(f"{item.focus_id}: verdict does not match the computed result")
         covered, missed = set(item.covered_must_cover), set(item.missed_must_cover)
         if covered & missed or covered | missed != set(focus.must_cover):
             raise InconsistentAssessmentError(f"{item.focus_id}: must_cover lists do not match the template")

@@ -18,6 +18,7 @@ from shared_models.assessment.report import (
     FocusAssessment,
     RedFlagFinding,
 )
+from shared_models.assessment.scoring import compute_focus_verdict
 from shared_models.assessment.session_events import (
     CandidateMessage,
     CompletionReason,
@@ -307,42 +308,32 @@ _TURNS: tuple[_Turn, ...] = (
     ),
 )
 
-_FOCUS_VERDICTS: dict[str, tuple[Verdict, float, str, str, str | None]] = {
+_FOCUS_TEXTS: dict[str, tuple[str, str, str | None]] = {
     "python_core": (
-        Verdict.STRONG,
-        0.85,
         "Solid grasp of the GIL and idiomatic generator use; type hints were not discussed.",
         "Both answers show practical understanding. The GIL answer separates CPU- and I/O-bound work and proposes "
         "multiprocessing; the generator example is concrete. Type hints remain unassessed within the budget.",
         None,
     ),
     "databases": (
-        Verdict.ADEQUATE,
-        0.8,
         "Strong query investigation; weaker on ORM awareness and N+1 queries.",
         "The slow-query answer is plan-driven with a safe index rollout. Transaction choices are sound, but the "
         "candidate rarely inspects ORM SQL and N+1 queries were not covered.",
         "Matches the reference on plan-first investigation and indexing; does not mention BUFFERS output.",
     ),
     "api_design": (
-        Verdict.STRONG,
-        0.85,
         "Designs idempotent endpoints, knows keyset pagination and centralises error handling.",
         "Idempotency was answered completely, including the unique-constraint race. Pagination and error mapping "
         "were covered at a practical level.",
         None,
     ),
     "async_io": (
-        Verdict.WEAK,
-        0.75,
         "Believes blocking calls only slow one request; limited asyncio understanding.",
         "The time.sleep answer misses that the event loop is blocked, and the follow-up relies on framework "
         "defaults. Blocking calls and task cancellation were not covered.",
         "Diverges from the reference: the answer misses that a blocking call stalls the whole event loop.",
     ),
     "testing": (
-        Verdict.NOT_ASSESSED,
-        0.3,
         "Only one answer collected; below the required evidence for this focus area.",
         "The single answer suggests testing is delegated to QA, but one data point is not enough for a verdict.",
         None,
@@ -436,7 +427,9 @@ def mock_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
 
     focus_assessments: list[FocusAssessment] = []
     for focus in template.criteria:
-        verdict, confidence, summary, rationale, comparison = _FOCUS_VERDICTS[focus.id]
+        summary, rationale, comparison = _FOCUS_TEXTS[focus.id]
+        evidence = [item for item in state.evidence if item.focus_id == focus.id]
+        verdict, confidence = compute_focus_verdict(focus, evidence)
         covered = state.coverage[focus.id].covered_must_cover
         focus_assessments.append(
             FocusAssessment(
@@ -445,7 +438,7 @@ def mock_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
                 confidence=confidence,
                 summary_short=summary,
                 rationale=rationale,
-                evidence=[item for item in state.evidence if item.focus_id == focus.id],
+                evidence=evidence,
                 covered_must_cover=list(covered),
                 missed_must_cover=[topic for topic in focus.must_cover if topic not in covered],
                 reference_comparison=comparison,
