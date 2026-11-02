@@ -62,7 +62,7 @@ class ContextReader:
         correlation_id = document.get("correlation_id")
         return CVContextData(
             correlation_id=str(correlation_id) if correlation_id is not None else None,
-            cv_data=CVData.model_validate(self._normalize_cv_payload(cv_payload)),
+            cv_data=CVData.model_validate(cv_payload),
         )
 
     async def get_latest_interview(self, user_id: str) -> InterviewContextData | None:
@@ -94,11 +94,3 @@ class ContextReader:
             cv_correlation_id=session.cv_correlation_id,
             report=session.report,
         )
-
-    @staticmethod
-    def _normalize_cv_payload(payload: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(payload)
-        skills = normalized.get("skills")
-        if skills and isinstance(skills[0], str):
-            normalized["skills"] = [{"name": skill} for skill in skills]
-        return normalized
