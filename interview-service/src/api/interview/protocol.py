@@ -15,6 +15,8 @@ class ErrorCode(StrEnum):
     ASSESSMENT_NOT_READY = "assessment_not_ready"
     ASSESSMENT_UNAVAILABLE = "assessment_unavailable"
     ENGINE_UNAVAILABLE = "engine_unavailable"
+    SESSION_COMPLETED = "session_completed"
+    SESSION_BUSY = "session_busy"
     INTERNAL_ERROR = "internal_error"
 
 

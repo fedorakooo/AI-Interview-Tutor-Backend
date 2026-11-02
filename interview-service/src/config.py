@@ -34,6 +34,7 @@ class MongoSettings(BaseSettings):
     cv_analysis_collection_name: str = "cv_analysis"
     cv_user_id_field: str = "user_id"
     interview_sessions_collection_name: str = "interview_sessions"
+    interview_events_collection_name: str = "interview_events"
 
     @property
     def url(self) -> str:
@@ -88,6 +89,7 @@ class RabbitMQSettings(BaseSettings):
     user: str = "guest"
     password: str = "guest"
     interview_completed_queue_name: str = "interview-completed-stream"
+    assessment_completed_queue_name: str = "assessment-completed"
 
     @property
     def url(self) -> str:
@@ -176,6 +178,10 @@ class Settings(BaseSettings):
     instance_settings: InstanceSettings = InstanceSettings()
     user_management_settings: UserManagementSettings = UserManagementSettings()
     interview_hello_timeout_seconds: float = 10.0
+    interview_evaluator_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_EVALUATOR_MODELS")
+    interview_interviewer_models: str = Field(
+        default="openai:gpt-4o-mini", validation_alias="INTERVIEW_INTERVIEWER_MODELS"
+    )
     graceful_shutdown_timeout_seconds: int = 30
 
     model_config = SettingsConfigDict(
