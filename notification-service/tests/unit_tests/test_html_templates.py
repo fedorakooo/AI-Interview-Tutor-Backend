@@ -11,3 +11,14 @@ def test_template_for_email_type_verify():
     subject, html = template_for_email_type("email_verify", subject="Verify", body="Click link")
     assert subject == "Verify"
     assert "Verify your email" in html or "Click link" in html
+
+
+def test_template_for_candidate_feedback_escapes_the_recruiter_text():
+    subject, html = template_for_email_type(
+        "candidate_feedback", subject="Feedback on your interview", body="Great work!\n<script>alert(1)</script>"
+    )
+
+    assert subject == "Feedback on your interview"
+    assert "<h2>Feedback on your interview</h2>" in html
+    assert "<p>Great work!</p>" in html
+    assert "<script>" not in html and "&lt;script&gt;" in html
