@@ -36,6 +36,9 @@ class IAssessmentRepository(ABC):
     async def create_outbox_message(self, message: AssessmentOutboxORM) -> AssessmentOutboxORM: ...
 
     @abstractmethod
+    async def has_outbox_message(self, event_type: str, event_id: UUID) -> bool: ...
+
+    @abstractmethod
     async def claim_outbox_messages(self, limit: int) -> list[AssessmentOutboxORM]: ...
 
     @abstractmethod

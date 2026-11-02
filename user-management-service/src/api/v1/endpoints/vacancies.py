@@ -5,13 +5,20 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from jwt_handler.value_objects import AccessTokenPayload
 from pydantic import BaseModel, Field
-from shared_models.assessment import AssessmentOverview, FocusDetail, ReviewRequest
+from shared_models.assessment import (
+    AssessmentOverview,
+    FeedbackEditRequest,
+    FeedbackView,
+    FocusDetail,
+    ReviewRequest,
+)
 from shared_models.assessment.contracts import AssessmentTemplateSnapshot, CvPolicy, HumanDecisionType, VacancyStatus
 from shared_models.assessment.evidence import Verdict
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.assessment import (
+    get_interview_feedback_client,
     get_interview_report_client,
     get_interview_spec_client,
     get_invitation_token_handler,
@@ -36,7 +43,13 @@ from src.domain.exceptions.interview_report_errors import (
     InterviewReportNotReadyError,
     InterviewReportUnavailableError,
 )
+from src.application.use_cases.candidate_feedback import (
+    ApproveCandidateFeedbackUseCase,
+    FeedbackNotAvailableError,
+    FeedbackVersionMismatchError,
+)
 from src.application.use_cases.template_drafts import GenerateTemplateDraftUseCase
+from src.domain.interfaces.reports.interview_feedback_client import IInterviewFeedbackClient
 from src.domain.interfaces.reports.interview_report_client import IInterviewReportClient
 from src.domain.interfaces.reports.interview_spec_client import IInterviewSpecClient
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
@@ -92,6 +105,18 @@ class ReportView(BaseModel):
     status: str
     report_reference: str
     report_version: int | None
+
+
+class FeedbackEditBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4_000)
+
+
+class FeedbackApproveBody(BaseModel):
+    version: int = Field(ge=1)
+
+
+class FeedbackApprovalView(BaseModel):
+    queued: bool
 
 
 class TemplateDraftBody(BaseModel):
@@ -374,6 +399,68 @@ async def add_report_focus_review(
         )
     except _REPORT_ERRORS as exc:
         raise _report_http_error(exc) from exc
+
+
+_FEEDBACK_ROLES = (OrganizationRole.ADMIN, OrganizationRole.RECRUITER)
+
+
+@assessment_router.get("/{attempt_id}/feedback", response_model=FeedbackView)
+async def get_candidate_feedback(
+    organization_id: UUID, attempt_id: UUID,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    feedback: Annotated[IInterviewFeedbackClient, Depends(get_interview_feedback_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_FEEDBACK_ROLES))],
+) -> FeedbackView:
+    _require_feature()
+    await _authorize_report(uow, organization_id, attempt_id, UUID(payload["id"]), "candidate_feedback.viewed", {})
+    try:
+        return await feedback.get_feedback(attempt_id)
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
+
+
+@assessment_router.put("/{attempt_id}/feedback", response_model=FeedbackView)
+async def edit_candidate_feedback(
+    organization_id: UUID, attempt_id: UUID, body: FeedbackEditBody,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    feedback: Annotated[IInterviewFeedbackClient, Depends(get_interview_feedback_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_FEEDBACK_ROLES))],
+) -> FeedbackView:
+    _require_feature()
+    actor_id = UUID(payload["id"])
+    await _authorize_report(uow, organization_id, attempt_id, actor_id, "candidate_feedback.edited", {})
+    try:
+        return await feedback.edit_feedback(attempt_id, FeedbackEditRequest(editor_id=actor_id, text=body.text))
+    except InterviewReportNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate feedback unavailable") from exc
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
+
+
+@assessment_router.post("/{attempt_id}/feedback/approve", response_model=FeedbackApprovalView)
+async def approve_candidate_feedback(
+    organization_id: UUID, attempt_id: UUID, body: FeedbackApproveBody,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    feedback: Annotated[IInterviewFeedbackClient, Depends(get_interview_feedback_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_FEEDBACK_ROLES))],
+) -> FeedbackApprovalView:
+    _require_feature()
+    try:
+        queued = await ApproveCandidateFeedbackUseCase(uow, feedback)(
+            organization_id, attempt_id, UUID(payload["id"]), body.version
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found") from exc
+    except FeedbackNotAvailableError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Feedback is not available yet") from exc
+    except FeedbackVersionMismatchError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Feedback text changed, review it again") from exc
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
+    return FeedbackApprovalView(queued=queued)
 
 
 @assessment_router.post("/{attempt_id}/decision", response_model=HumanDecisionView)

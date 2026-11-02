@@ -76,6 +76,12 @@ class AssessmentPostgresRepository(IAssessmentRepository):
         await self._session.flush()
         return message
 
+    async def has_outbox_message(self, event_type: str, event_id: UUID) -> bool:
+        statement = select(AssessmentOutboxORM.id).where(
+            AssessmentOutboxORM.event_type == event_type, AssessmentOutboxORM.event_id == event_id
+        )
+        return (await self._session.execute(statement)).first() is not None
+
     async def claim_outbox_messages(self, limit: int) -> list[AssessmentOutboxORM]:
         now = datetime.now(UTC)
         result = await self._session.execute(

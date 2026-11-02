@@ -151,6 +151,7 @@ class RabbitMQSettings(BaseSettings):
     user_deleted_queue_name: str = "user-deleted-stream"
     assessment_completed_queue_name: str = "assessment-completed"
     employer_notification_queue_name: str = "employer-notification-requested"
+    notifications_queue_name: str = "notifications-stream"
 
     timeout: float = 30
 
