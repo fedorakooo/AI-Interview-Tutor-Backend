@@ -11,8 +11,11 @@ from shared_models.practice.plan import PlanSource, PracticePlanDraft
 from shared_models.practice.profile import DevelopmentGoal, DifficultyLevel, UserPracticeProfile
 from src.agent.answer_grader import AnswerGrader
 from src.application.services.plan_context_builder import PlanContextBuilder
-from src.application.services.practice_services import ExerciseSanitizer, ExerciseValidator, QuotaService
+from src.application.services.quota_service import QuotaService
+from src.config import settings
 from src.domain.exceptions.practice_errors import DailyPlanQuotaExceededError, PlanGenerationFailedError
+from src.domain.services.exercise_sanitizer import ExerciseSanitizer
+from src.domain.services.exercise_validator import ExerciseValidator
 from src.infrastructure.mongo.context_reader import CVContextData, InterviewContextData
 
 
@@ -35,7 +38,7 @@ def _exercise(**overrides):
 class TestExerciseValidator:
     def test_accepts_valid_mcq_single(self) -> None:
         draft = PracticePlanDraft(title="Plan", focus_skills=["Python"], exercises=[_exercise()])
-        ExerciseValidator().validate(draft, expected_count=1)
+        ExerciseValidator(settings.practice_settings.max_exercises_per_plan).validate(draft, expected_count=1)
 
     def test_rejects_mcq_without_single_correct(self) -> None:
         draft = PracticePlanDraft(
@@ -51,7 +54,7 @@ class TestExerciseValidator:
             ],
         )
         with pytest.raises(PlanGenerationFailedError):
-            ExerciseValidator().validate(draft, expected_count=1)
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan).validate(draft, expected_count=1)
 
     def test_rejects_open_question_without_rubric(self) -> None:
         draft = PracticePlanDraft(
@@ -67,7 +70,7 @@ class TestExerciseValidator:
             ],
         )
         with pytest.raises(PlanGenerationFailedError):
-            ExerciseValidator().validate(draft, expected_count=1)
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan).validate(draft, expected_count=1)
 
 
 class TestExerciseSanitizer:

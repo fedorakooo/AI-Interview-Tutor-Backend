@@ -12,7 +12,6 @@ from shared_models.practice.plan import PlanStatus
 from src.agent.answer_grader import AnswerGrader
 from src.agent.plan_generator import PlanGenerator
 from src.application.services.plan_context_builder import PlanContextBuilder
-from src.application.services.practice_services import ExerciseValidator, StreakService
 from src.config import settings
 from src.domain.exceptions.practice_errors import (
     AlreadyAttemptedError,
@@ -24,6 +23,9 @@ from src.domain.exceptions.practice_errors import (
     PlanNotReadyError,
 )
 from src.domain.interfaces.message_publisher import IMessagePublisher
+from src.domain.services.exercise_validator import ExerciseValidator
+from src.domain.services.spaced_repetition import compute_next_review
+from src.domain.services.streak_service import StreakService
 from src.logger import app_logger
 
 
@@ -192,8 +194,6 @@ class SubmitAttemptUseCase:
         grading = await self._grade_exercise(exercise, answer_payload)
         next_review_at = None
         if exercise.type == ExerciseType.FLASHCARD:
-            from src.application.services.spaced_repetition import compute_next_review
-
             rating = answer_payload.get("flashcard_rating") or "good"
             next_review_at = compute_next_review(str(rating), now)
         attempt = ExerciseAttempt(

@@ -6,6 +6,7 @@ from shared_models.interview.report import InterviewReport
 from shared_models.interview.session import InterviewSessionDocument, InterviewSessionStatus
 from shared_models.messaging.common import AnalysisStatus
 from src.config import settings
+from src.domain.interfaces.context_reader import IContextReader
 from src.infrastructure.mongo.client import MongoClientFactory
 
 CV_METADATA_FIELDS = {
@@ -34,7 +35,7 @@ class InterviewContextData:
     report: InterviewReport
 
 
-class ContextReader:
+class ContextReader(IContextReader):
     def __init__(self, mongo_client) -> None:
         self._client = mongo_client
         self._cv_collection = MongoClientFactory.get_collection(

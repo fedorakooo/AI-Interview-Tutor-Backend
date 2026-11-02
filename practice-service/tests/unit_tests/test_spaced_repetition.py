@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from src.application.services.spaced_repetition import compute_next_review
+from src.domain.services.spaced_repetition import compute_next_review
 
 
 def test_compute_next_review_again():

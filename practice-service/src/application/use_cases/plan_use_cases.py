@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 from shared_models.practice.messaging import PlanGenerationRequest, PlanSource, PracticePlanJobMessage
 from shared_models.practice.plan import PlanStatus, PracticePlan
 from src.application.services.plan_context_builder import PlanContextBuilder
-from src.application.services.practice_services import QuotaService
+from src.application.services.quota_service import QuotaService
 from src.config import settings
 from src.domain.exceptions.practice_errors import (
     InvalidExerciseCountError,

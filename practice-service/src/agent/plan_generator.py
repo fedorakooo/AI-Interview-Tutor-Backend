@@ -3,7 +3,7 @@ import json
 from langchain_core.prompts import ChatPromptTemplate
 from shared_models.practice.plan import PracticePlanDraft
 from src.agent.prompts.templates import PLAN_GENERATION_SYSTEM_PROMPT
-from src.application.services.practice_services import BuiltPlanContext
+from src.application.services.plan_context_builder import BuiltPlanContext
 from src.infrastructure.llm.factory import LLMFactory
 from src.logger import agent_logger
 

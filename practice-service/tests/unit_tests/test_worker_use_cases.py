@@ -8,12 +8,14 @@ from shared_models.practice.messaging import PlanGenerationRequest, PracticePlan
 from shared_models.practice.plan import PlanContextSnapshot, PlanSource, PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.agent.answer_grader import AnswerGrader
-from src.application.services.practice_services import BuiltPlanContext, ExerciseValidator
+from src.application.services.plan_context_builder import BuiltPlanContext
 from src.application.use_cases.worker_use_cases import (
     GeneratePlanUseCase,
     SubmitAttemptUseCase,
 )
+from src.config import settings
 from src.domain.exceptions.practice_errors import AlreadyAttemptedError, PlanGenerationFailedError, PlanNotReadyError
+from src.domain.services.exercise_validator import ExerciseValidator
 from src.infrastructure.mongo.repositories import ProfileRepository
 
 from tests.fixtures.plan_fixtures import sample_plan_draft
@@ -66,7 +68,7 @@ class TestGeneratePlanUseCase:
             AsyncMock(),
             AsyncMock(),
             plan_generator,
-            ExerciseValidator(),
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan),
         )
 
         await use_case.execute(
@@ -95,7 +97,7 @@ class TestGeneratePlanUseCase:
             AsyncMock(),
             AsyncMock(),
             plan_generator,
-            ExerciseValidator(),
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan),
         )
 
         await use_case.execute(
@@ -133,7 +135,7 @@ class TestGeneratePlanUseCase:
             profile_repo,
             context_builder,
             plan_generator,
-            ExerciseValidator(),
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan),
         )
 
         await use_case.execute(
@@ -175,7 +177,7 @@ class TestGeneratePlanUseCase:
             profile_repo,
             context_builder,
             plan_generator,
-            ExerciseValidator(),
+            ExerciseValidator(settings.practice_settings.max_exercises_per_plan),
             publisher,
             "practice-plan-ready-stream",
         )
