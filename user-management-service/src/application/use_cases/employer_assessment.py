@@ -20,7 +20,14 @@ class GetAuthorizedReportUseCase:
     def __init__(self, uow: IUnitOfWork):
         self._uow = uow
 
-    async def __call__(self, organization_id: UUID, attempt_id: UUID, actor_user_id: UUID):
+    async def __call__(
+        self,
+        organization_id: UUID,
+        attempt_id: UUID,
+        actor_user_id: UUID,
+        action: str = "assessment_report.viewed",
+        details: dict | None = None,
+    ):
         async with self._uow:
             attempt = await self._uow.assessment_repository.get_attempt_for_organization(organization_id, attempt_id)
             if attempt is None:
@@ -29,8 +36,8 @@ class GetAuthorizedReportUseCase:
                 await self._uow.assessment_repository.create_audit_entry(
                     AuditLogORM(
                         id=uuid4(), actor_type="user", actor_id=actor_user_id,
-                        action="assessment_report.viewed", organization_id=organization_id,
-                        attempt_id=attempt_id, after={"report_available": True},
+                        action=action, organization_id=organization_id,
+                        attempt_id=attempt_id, after=details or {"report_available": True},
                     )
                 )
             return attempt

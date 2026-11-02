@@ -12,7 +12,12 @@ from src.api.dependencies.auth import get_candidate_attempt_token_handler
 from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.rabbitmq import get_cv_analyzer_producer
 from src.api.dependencies.s3 import get_s3_client
-from src.application.use_cases.assessments import AssessmentFlowError, PublicInvitationUseCase, UploadAttemptCVUseCase
+from src.application.use_cases.assessments import (
+    AssessmentFlowError,
+    PublicInvitationUseCase,
+    SkipAttemptCVUseCase,
+    UploadAttemptCVUseCase,
+)
 from src.domain.interfaces.auth.candidate_attempt_token_handler import ICandidateAttemptTokenHandler
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.interfaces.rabbitmq.rabbitmq_producer import IRabbitMQProducer
@@ -154,3 +159,22 @@ async def issue_interview_token(
     if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Attempt is not ready")
     return InterviewTokenResponse(interview_token=token_handler.mint_interview_token(str(attempt_id)))
+
+
+@router.post("/attempts/{attempt_id}/cv/skip", response_model=AttemptProgress)
+async def skip_attempt_cv(
+    attempt_id: UUID,
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(candidate_bearer)],
+    token_handler: Annotated[ICandidateAttemptTokenHandler, Depends(get_candidate_attempt_token_handler)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+) -> AttemptProgress:
+    _enabled()
+    try:
+        token_handler.verify(credentials.credentials, str(attempt_id))
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid attempt token") from exc
+    try:
+        attempt = await SkipAttemptCVUseCase(uow)(attempt_id)
+    except AssessmentFlowError as exc:
+        raise _public_error() from exc
+    return AttemptProgress(status=attempt.status, cv_status=None)

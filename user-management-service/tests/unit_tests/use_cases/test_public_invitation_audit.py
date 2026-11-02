@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
+from shared_models.assessment.contracts import CvPolicy
 from src.application.use_cases.assessments import AssessmentFlowError, PublicInvitationUseCase
 
 
@@ -33,9 +33,18 @@ class _Repository:
         return entry
 
 
+class _VacancyRepository:
+    def __init__(self, policy=CvPolicy.REQUIRED):
+        self.policy = policy
+
+    async def get_template(self, _vacancy_id, _version):
+        return SimpleNamespace(snapshot=SimpleNamespace(cv_policy=self.policy))
+
+
 class _Uow:
-    def __init__(self, repository):
+    def __init__(self, repository, policy=CvPolicy.REQUIRED):
         self.assessment_repository = repository
+        self.vacancy_repository = _VacancyRepository(policy)
 
     async def __aenter__(self):
         return self
@@ -46,10 +55,15 @@ class _Uow:
 
 def _invitation(*, expires_at=None):
     return SimpleNamespace(
-        id=uuid4(), organization_id=uuid4(), vacancy_id=uuid4(),
-        candidate_email_normalized="candidate@example.com", status="created",
+        id=uuid4(),
+        organization_id=uuid4(),
+        vacancy_id=uuid4(),
+        candidate_email_normalized="candidate@example.com",
+        status="created",
         expires_at=expires_at or datetime.now(UTC) + timedelta(hours=1),
-        attempts_started=0, max_attempts=1,
+        attempts_started=0,
+        max_attempts=1,
+        template_version=1,
     )
 
 
@@ -88,3 +102,17 @@ async def test_start_is_idempotent_and_audits_only_the_first_attempt():
     assert repository.invitation.attempts_started == 1
     assert repository.invitation.status == "in_progress"
     assert [entry.action for entry in repository.audit_entries] == ["invitation.started"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("policy", "status"),
+    [(CvPolicy.REQUIRED, "created"), (CvPolicy.OPTIONAL, "created"), (CvPolicy.NONE, "ready")],
+)
+async def test_attempt_is_ready_immediately_only_when_the_template_needs_no_cv(policy, status):
+    repository = _Repository(_invitation())
+    use_case = PublicInvitationUseCase(_Uow(repository, policy), _Tokens())
+
+    attempt = await use_case.start("token", "candidate@example.com", "Candidate", "privacy-v1")
+
+    assert attempt.status == status

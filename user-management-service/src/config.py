@@ -114,6 +114,15 @@ class AssessmentSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ASSESSMENT_", env_file=".env", extra="ignore")
 
 
+class InterviewServiceSettings(BaseSettings):
+    """Location of the interview service internal API."""
+
+    url: str = "http://interview-service:8001"
+    timeout_seconds: float = 30.0
+
+    model_config = SettingsConfigDict(env_prefix="INTERVIEW_SERVICE_", env_file=".env", extra="ignore")
+
+
 class S3Settings(BaseSettings):
     """S3 connection settings."""
 
@@ -168,6 +177,7 @@ class Settings(BaseSettings):
     frontend_settings: FrontendSettings = FrontendSettings()
     oauth_settings: OAuthSettings = OAuthSettings()
     assessment_settings: AssessmentSettings = AssessmentSettings()
+    interview_service_settings: InterviewServiceSettings = InterviewServiceSettings()
     s3_settings: S3Settings = S3Settings()
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

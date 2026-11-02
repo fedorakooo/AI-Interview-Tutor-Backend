@@ -5,11 +5,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from jwt_handler.value_objects import AccessTokenPayload
 from pydantic import BaseModel, Field
+from shared_models.assessment import AssessmentOverview, FocusDetail, ReviewRequest
 from shared_models.assessment.contracts import AssessmentTemplateSnapshot, HumanDecisionType, VacancyStatus
+from shared_models.assessment.evidence import Verdict
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
-from src.api.dependencies.assessment import get_invitation_token_handler
+from src.api.dependencies.assessment import get_interview_report_client, get_invitation_token_handler
 from src.api.security import require_authenticated, require_org_role
 from src.application.use_cases.vacancies import (
     ActivateVacancyUseCase,
@@ -24,6 +26,12 @@ from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
 from src.application.use_cases.assessments import CreateInvitationUseCase, RevokeInvitationUseCase
 from src.application.use_cases.employer_assessment import GetAuthorizedReportUseCase, ListCandidatesUseCase, ListHumanDecisionHistoryUseCase, RecordHumanDecisionUseCase
+from src.domain.exceptions.interview_report_errors import (
+    InterviewReportNotFoundError,
+    InterviewReportNotReadyError,
+    InterviewReportUnavailableError,
+)
+from src.domain.interfaces.reports.interview_report_client import IInterviewReportClient
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 
 router = APIRouter(prefix="/organizations/{organization_id}/vacancies", tags=["Vacancies"])
@@ -77,6 +85,11 @@ class ReportView(BaseModel):
     status: str
     report_reference: str
     report_version: int | None
+
+
+class FocusReviewRequest(BaseModel):
+    comment: str = Field(min_length=1, max_length=2_000)
+    manual_verdict: Verdict | None = None
 
 
 class HumanDecisionRequest(BaseModel):
@@ -254,6 +267,80 @@ async def get_report(
     if not attempt.report_reference:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report unavailable")
     return ReportView(attempt_id=attempt.id, status=attempt.status, report_reference=attempt.report_reference, report_version=attempt.report_version)
+
+
+_REPORT_ROLES = (OrganizationRole.ADMIN, OrganizationRole.RECRUITER, OrganizationRole.HIRING_MANAGER)
+_REPORT_ERRORS = (InterviewReportNotFoundError, InterviewReportNotReadyError, InterviewReportUnavailableError)
+
+
+def _report_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, InterviewReportNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report unavailable")
+    if isinstance(exc, InterviewReportNotReadyError):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Report is not ready")
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Report service unavailable")
+
+
+async def _authorize_report(
+    uow: IUnitOfWork, organization_id: UUID, attempt_id: UUID, actor_id: UUID, action: str, details: dict
+) -> None:
+    attempt = await GetAuthorizedReportUseCase(uow)(organization_id, attempt_id, actor_id, action, details)
+    if not attempt.report_reference:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report unavailable")
+
+
+@assessment_router.get("/{attempt_id}/report/overview", response_model=AssessmentOverview)
+async def get_report_overview(
+    organization_id: UUID, attempt_id: UUID,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    reports: Annotated[IInterviewReportClient, Depends(get_interview_report_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_REPORT_ROLES))],
+) -> AssessmentOverview:
+    _require_feature()
+    await _authorize_report(uow, organization_id, attempt_id, UUID(payload["id"]), "assessment_report.viewed", {"view": "overview"})
+    try:
+        return await reports.get_overview(attempt_id)
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
+
+
+@assessment_router.get("/{attempt_id}/report/focus/{focus_id}", response_model=FocusDetail)
+async def get_report_focus_detail(
+    organization_id: UUID, attempt_id: UUID, focus_id: str,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    reports: Annotated[IInterviewReportClient, Depends(get_interview_report_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_REPORT_ROLES))],
+) -> FocusDetail:
+    _require_feature()
+    await _authorize_report(
+        uow, organization_id, attempt_id, UUID(payload["id"]), "assessment_report.focus_viewed", {"focus_id": focus_id}
+    )
+    try:
+        return await reports.get_focus_detail(attempt_id, focus_id)
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
+
+
+@assessment_router.post("/{attempt_id}/report/focus/{focus_id}/reviews", response_model=FocusDetail)
+async def add_report_focus_review(
+    organization_id: UUID, attempt_id: UUID, focus_id: str, body: FocusReviewRequest,
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    reports: Annotated[IInterviewReportClient, Depends(get_interview_report_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(*_REPORT_ROLES))],
+) -> FocusDetail:
+    _require_feature()
+    actor_id = UUID(payload["id"])
+    details = {"focus_id": focus_id, "manual_verdict": body.manual_verdict.value if body.manual_verdict else None}
+    await _authorize_report(uow, organization_id, attempt_id, actor_id, "assessment_report.reviewed", details)
+    try:
+        return await reports.add_review(
+            attempt_id, focus_id, ReviewRequest(author_id=actor_id, comment=body.comment, manual_verdict=body.manual_verdict)
+        )
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
 
 
 @assessment_router.post("/{attempt_id}/decision", response_model=HumanDecisionView)

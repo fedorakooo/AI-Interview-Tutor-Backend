@@ -3,19 +3,19 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
 from shared_models.assessment.contracts import (
     AssessmentCompleted,
     AssessmentMode,
     AssessmentTemplateSnapshot,
     AttemptStatus,
+    CvPolicy,
     RubricCriterion,
 )
-
 from src.application.use_cases.assessments import (
     AssessmentFlowError,
     GetAssessmentContextUseCase,
     RegisterAssessmentCompletionUseCase,
+    SkipAttemptCVUseCase,
 )
 
 
@@ -98,10 +98,16 @@ def _state():
 
 def _event(attempt, invitation):
     return AssessmentCompleted(
-        event_id=uuid4(), occurred_at=datetime.now(UTC), correlation_id=uuid4(),
-        organization_id=invitation.organization_id, vacancy_id=invitation.vacancy_id,
-        invitation_id=invitation.id, attempt_id=attempt.id, session_id="session-1",
-        report_reference="opaque-report-reference", report_version=2,
+        event_id=uuid4(),
+        occurred_at=datetime.now(UTC),
+        correlation_id=uuid4(),
+        organization_id=invitation.organization_id,
+        vacancy_id=invitation.vacancy_id,
+        invitation_id=invitation.id,
+        attempt_id=attempt.id,
+        session_id="session-1",
+        report_reference="opaque-report-reference",
+        report_version=2,
     )
 
 
@@ -145,10 +151,18 @@ async def test_context_comes_from_persisted_attempt_template_and_not_browser_val
     attempt, invitation = _state()
     repository = _AssessmentRepository(attempt, invitation)
     snapshot = AssessmentTemplateSnapshot(
-        mode=AssessmentMode.TECHNICAL, question_count=5, duration_minutes=30, attempt_limit=1,
+        mode=AssessmentMode.TECHNICAL,
+        question_count=5,
+        duration_minutes=30,
+        attempt_limit=1,
         criteria=[RubricCriterion(skill="Python", required=True, weight=100, expected_level="senior")],
     )
-    vacancy = SimpleNamespace(id=invitation.vacancy_id, organization_id=invitation.organization_id, status="active")
+    vacancy = SimpleNamespace(
+        id=invitation.vacancy_id,
+        organization_id=invitation.organization_id,
+        status="active",
+        job_description="Build APIs",
+    )
     template = SimpleNamespace(version=1, snapshot=snapshot)
 
     context = await GetAssessmentContextUseCase(_Uow(repository, _VacancyRepository(vacancy, template)))(attempt.id)
@@ -157,3 +171,107 @@ async def test_context_comes_from_persisted_attempt_template_and_not_browser_val
     assert context.template == snapshot
     assert context.cv_correlation_id == attempt.cv_correlation_id
     assert "candidate_email_normalized" not in type(context).model_fields
+
+
+def _context_use_case(policy, *, attempt_status=AttemptStatus.READY.value, cv_correlation_id=None, brief=""):
+    attempt, invitation = _state()
+    attempt.status, attempt.cv_correlation_id = attempt_status, cv_correlation_id
+    snapshot = AssessmentTemplateSnapshot(
+        mode=AssessmentMode.TECHNICAL,
+        question_count=5,
+        duration_minutes=30,
+        attempt_limit=1,
+        cv_policy=policy,
+        brief=brief,
+        criteria=[RubricCriterion(skill="Python", required=True, weight=100, expected_level="senior")],
+    )
+    vacancy = SimpleNamespace(
+        id=invitation.vacancy_id,
+        organization_id=invitation.organization_id,
+        status="active",
+        job_description="Build APIs",
+    )
+    uow = _Uow(
+        _AssessmentRepository(attempt, invitation),
+        _VacancyRepository(vacancy, SimpleNamespace(version=1, snapshot=snapshot)),
+    )
+    return attempt, GetAssessmentContextUseCase(uow), vacancy
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("policy", [CvPolicy.OPTIONAL, CvPolicy.NONE])
+async def test_context_does_not_require_a_cv_when_the_policy_allows_none(policy):
+    attempt, use_case, _ = _context_use_case(policy, brief="Focus on APIs")
+
+    context = await use_case(attempt.id)
+
+    assert context.cv_correlation_id is None
+    assert context.cv_policy == policy
+    assert context.job_description == "Build APIs"
+    assert context.brief == "Focus on APIs"
+
+
+@pytest.mark.asyncio
+async def test_context_requires_a_cv_when_the_policy_requires_one():
+    attempt, use_case, _ = _context_use_case(CvPolicy.REQUIRED)
+
+    with pytest.raises(AssessmentFlowError):
+        await use_case(attempt.id)
+
+
+@pytest.mark.asyncio
+async def test_completed_attempt_context_is_available_for_reports_even_after_the_vacancy_closes():
+    attempt, use_case, vacancy = _context_use_case(CvPolicy.NONE, attempt_status=AttemptStatus.COMPLETED.value)
+    vacancy.status = "closed"
+
+    assert (await use_case(attempt.id)).attempt_id == attempt.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [AttemptStatus.CREATED.value, AttemptStatus.CV_PROCESSING.value])
+async def test_context_is_unavailable_before_the_attempt_is_ready(status):
+    attempt, use_case, _ = _context_use_case(CvPolicy.NONE, attempt_status=status)
+
+    with pytest.raises(AssessmentFlowError):
+        await use_case(attempt.id)
+
+
+def _skip_use_case(policy, status=AttemptStatus.CREATED.value):
+    attempt, invitation = _state()
+    attempt.status, attempt.cv_correlation_id = status, None
+
+    class Repository(_AssessmentRepository):
+        async def get_attempt(self, attempt_id):
+            return self.attempt if attempt_id == self.attempt.id else None
+
+    snapshot = SimpleNamespace(cv_policy=policy)
+    vacancy_repository = _VacancyRepository(
+        SimpleNamespace(id=invitation.vacancy_id, organization_id=invitation.organization_id),
+        SimpleNamespace(version=1, snapshot=snapshot),
+    )
+    return attempt, SkipAttemptCVUseCase(_Uow(Repository(attempt, invitation), vacancy_repository))
+
+
+@pytest.mark.asyncio
+async def test_optional_cv_can_be_skipped_once_to_make_the_attempt_ready():
+    attempt, use_case = _skip_use_case(CvPolicy.OPTIONAL)
+
+    assert (await use_case(attempt.id)).status == AttemptStatus.READY.value
+    assert (await use_case(attempt.id)).status == AttemptStatus.READY.value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("policy", "status"),
+    [
+        (CvPolicy.REQUIRED, AttemptStatus.CREATED.value),
+        (CvPolicy.NONE, AttemptStatus.CREATED.value),
+        (CvPolicy.OPTIONAL, AttemptStatus.CV_PROCESSING.value),
+    ],
+)
+async def test_cv_cannot_be_skipped_when_it_is_required_or_already_uploaded(policy, status):
+    attempt, use_case = _skip_use_case(policy, status)
+
+    with pytest.raises(AssessmentFlowError):
+        await use_case(attempt.id)
+    assert attempt.status == status
