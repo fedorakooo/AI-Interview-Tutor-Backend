@@ -1,6 +1,6 @@
 import json
 
-from src.agent.state.evaluate_answer import _parse_evaluation
+from src.legacy.agent.state.evaluate_answer import _parse_evaluation
 
 
 def test_parse_evaluation_json():

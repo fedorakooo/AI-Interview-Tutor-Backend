@@ -7,12 +7,12 @@ import pytest
 from fastapi import WebSocket
 from shared_models.cv.cv_data import CVData
 from shared_models.interview.session import InterviewSessionStatus
-from src.api.v1.managers.interview_manager import (
+from src.legacy.api.managers.interview_manager import (
     SERVER_SHUTDOWN_CLOSE_CODE,
     ActiveSession,
     InterviewConnectionManager,
 )
-from src.domain.models.user_profile import UserProfile
+from src.legacy.domain.models.user_profile import UserProfile
 
 
 @pytest.fixture

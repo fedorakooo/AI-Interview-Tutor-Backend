@@ -1,7 +1,5 @@
-from src.infrastructure.redis.cost_budget import CostBudgetTracker
-
-
 import pytest
+from src.legacy.infrastructure.redis.cost_budget import CostBudgetTracker
 
 
 @pytest.mark.asyncio

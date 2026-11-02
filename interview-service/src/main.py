@@ -4,9 +4,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api.exception_handler import exception_container
-from src.api.v1.router import router
 from src.app.lifespan import lifespan
 from src.config import settings
+from src.legacy.api.router import router
 
 app = FastAPI(
     docs_url="/docs" if settings.debug else None,
@@ -27,7 +27,7 @@ app.include_router(router)
 
 exception_container(app)
 
-app.mount("/static", StaticFiles(directory="src/static"), name="static")
+app.mount("/static", StaticFiles(directory="src/legacy/static"), name="static")
 
 
 @app.get("/")

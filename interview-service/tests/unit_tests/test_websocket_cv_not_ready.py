@@ -4,10 +4,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jwt_handler.handlers import JWTTokenHandler
-from src.api.dependencies.auth import get_token_handler
-from src.api.dependencies.interview import get_interview_manager
-from src.api.v1.endpoints.interview import CV_NOT_READY_CLOSE_CODE, get_cv_data_resolver, router
-from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
+from src.legacy.api.dependencies.auth import get_token_handler
+from src.legacy.api.dependencies.interview import get_interview_manager
+from src.legacy.api.endpoints.interview import CV_NOT_READY_CLOSE_CODE, get_cv_data_resolver, router
+from src.legacy.domain.exceptions.cv_not_ready_error import CVNotReadyError
 
 
 @pytest.fixture

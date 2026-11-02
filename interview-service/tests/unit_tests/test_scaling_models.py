@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from shared_models.interview.report import InterviewReport, SkillScore
 from shared_models.interview.session import InterviewSessionDocument, InterviewSessionStatus
-from src.infrastructure.redis.session_registry import RedisSessionRegistry
+from src.legacy.infrastructure.redis.session_registry import RedisSessionRegistry
 
 
 @pytest.mark.asyncio

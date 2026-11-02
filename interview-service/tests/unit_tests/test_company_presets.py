@@ -1,4 +1,4 @@
-from src.services.company_presets import load_company_presets, preset_context
+from src.legacy.services.company_presets import load_company_presets, preset_context
 
 
 def test_load_company_presets_contains_amazon():
