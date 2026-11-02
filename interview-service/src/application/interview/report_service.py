@@ -42,6 +42,10 @@ class AssessmentReportService:
         self._text_writer = text_writer
         self._clock = clock
 
+    async def assessment(self, attempt_id: UUID, template: AssessmentTemplateSnapshot) -> Assessment:
+        assessment, _ = await self._load(attempt_id, template)
+        return assessment
+
     async def overview(self, attempt_id: UUID, template: AssessmentTemplateSnapshot) -> AssessmentOverview:
         assessment, _ = await self._load(attempt_id, template)
         return build_overview(assessment, template)

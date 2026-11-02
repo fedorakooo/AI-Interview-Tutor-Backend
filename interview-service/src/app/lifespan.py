@@ -3,12 +3,14 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
+from src.application.interview.feedback_service import CandidateFeedbackService
 from src.application.interview.report_service import AssessmentReportService
 from src.application.interview.session_service import InterviewSessionService
 from src.application.interview.spec_service import SpecDraftService
 from src.config import settings
 from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter
 from src.infrastructure.ai.evaluator import PydanticAnswerEvaluator
+from src.infrastructure.ai.feedback_writer import PydanticFeedbackWriter
 from src.infrastructure.ai.interviewer import PydanticInterviewerAgent
 from src.infrastructure.ai.models import parse_model_specs
 from src.infrastructure.ai.spec_agent import PydanticSpecDrafter
@@ -16,6 +18,7 @@ from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
 from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
 from src.infrastructure.mongo_event_journal import MongoEventJournal
+from src.infrastructure.mongo_feedback_store import MongoFeedbackStore
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
 from src.infrastructure.redis.client import create_redis_client
 from src.infrastructure.redis.session_lock import RedisSessionLock
@@ -35,6 +38,10 @@ async def lifespan(app: FastAPI):
         mongo_client[mongo_settings.db_name][mongo_settings.interview_assessment_reviews_collection_name],
     )
     await assessment_store.ensure_indexes()
+    feedback_store = MongoFeedbackStore(
+        mongo_client[mongo_settings.db_name][mongo_settings.interview_feedback_collection_name]
+    )
+    await feedback_store.ensure_indexes()
 
     async with httpx.AsyncClient(timeout=user_management.timeout_seconds) as http_client:
         app.state.assessment_context_client = UserManagementAssessmentContextClient(
@@ -63,6 +70,11 @@ async def lifespan(app: FastAPI):
             journal=journal,
             store=assessment_store,
             text_writer=PydanticAssessmentTextWriter(parse_model_specs(settings.interview_report_models)),
+        )
+        app.state.candidate_feedback_service = CandidateFeedbackService(
+            app.state.assessment_report_service,
+            feedback_store,
+            PydanticFeedbackWriter(parse_model_specs(settings.interview_feedback_models)),
         )
         app.state.spec_draft_service = SpecDraftService(
             PydanticSpecDrafter(parse_model_specs(settings.interview_spec_models))
