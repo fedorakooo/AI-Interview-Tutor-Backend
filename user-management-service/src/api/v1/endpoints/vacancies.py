@@ -18,6 +18,7 @@ from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
 from src.api.dependencies.assessment import (
+    get_interview_data_eraser,
     get_interview_feedback_client,
     get_interview_report_client,
     get_interview_spec_client,
@@ -43,13 +44,17 @@ from src.domain.exceptions.interview_report_errors import (
     InterviewReportNotReadyError,
     InterviewReportUnavailableError,
 )
+from src.api.dependencies.s3 import get_s3_client
+from src.application.use_cases.data_erasure import EraseAttemptDataUseCase
 from src.application.use_cases.candidate_feedback import (
     ApproveCandidateFeedbackUseCase,
     FeedbackNotAvailableError,
     FeedbackVersionMismatchError,
 )
 from src.application.use_cases.template_drafts import GenerateTemplateDraftUseCase
+from src.domain.interfaces.reports.interview_data_eraser import IInterviewDataEraser
 from src.domain.interfaces.reports.interview_feedback_client import IInterviewFeedbackClient
+from src.domain.interfaces.storage.s3_client import IS3Client
 from src.domain.interfaces.reports.interview_report_client import IInterviewReportClient
 from src.domain.interfaces.reports.interview_spec_client import IInterviewSpecClient
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
@@ -461,6 +466,24 @@ async def approve_candidate_feedback(
     except _REPORT_ERRORS as exc:
         raise _report_http_error(exc) from exc
     return FeedbackApprovalView(queued=queued)
+
+
+@assessment_router.delete("/{attempt_id}/data", status_code=status.HTTP_204_NO_CONTENT)
+async def erase_attempt_data(
+    organization_id: UUID, attempt_id: UUID,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    eraser: Annotated[IInterviewDataEraser, Depends(get_interview_data_eraser)],
+    s3_client: Annotated[IS3Client, Depends(get_s3_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN))],
+) -> None:
+    _require_feature()
+    try:
+        await EraseAttemptDataUseCase(uow, eraser, s3_client)(organization_id, attempt_id, UUID(payload["id"]), "request")
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Attempt not found") from exc
+    except _REPORT_ERRORS as exc:
+        raise _report_http_error(exc) from exc
 
 
 @assessment_router.post("/{attempt_id}/decision", response_model=HumanDecisionView)

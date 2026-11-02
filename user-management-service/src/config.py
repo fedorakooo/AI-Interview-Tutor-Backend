@@ -107,6 +107,9 @@ class AssessmentSettings(BaseSettings):
     invitation_ttl_hours: int = 48
     candidate_attempt_token_expire_minutes: int = 240
     candidate_interview_token_expire_minutes: int = 30
+    retention_job_enabled: bool = True
+    retention_job_interval_seconds: int = 3600
+    retention_batch_size: int = 20
     # Required for service-to-service routes.  An empty value deliberately
     # disables those routes rather than creating a development backdoor.
     internal_service_token: str = ""

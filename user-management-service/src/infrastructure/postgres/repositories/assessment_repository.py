@@ -1,11 +1,12 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.interfaces.database.repositories.assessment_repository import IAssessmentRepository
+from src.infrastructure.postgres.schemas.organization import OrganizationORM
 from src.infrastructure.postgres.schemas.assessment_flow import AssessmentCVUploadORM, AssessmentOutboxORM, AuditLogORM, CandidateAttemptORM, CandidateInvitationORM, HumanDecisionHistoryORM, HumanDecisionORM, ProcessedEventORM
 
 
@@ -181,6 +182,47 @@ class AssessmentPostgresRepository(IAssessmentRepository):
             .order_by(HumanDecisionHistoryORM.version)
         )
         return list(result.scalars())
+
+    async def list_attempts_due_for_erasure(self, limit: int) -> list[tuple[CandidateAttemptORM, CandidateInvitationORM]]:
+        anchor = func.coalesce(
+            CandidateAttemptORM.completed_at, CandidateAttemptORM.started_at, CandidateAttemptORM.created_at
+        )
+        deadline = anchor + func.make_interval(0, 0, 0, OrganizationORM.retention_days)
+        statement = (
+            select(CandidateAttemptORM, CandidateInvitationORM)
+            .join(CandidateInvitationORM, CandidateInvitationORM.id == CandidateAttemptORM.invitation_id)
+            .join(OrganizationORM, OrganizationORM.id == CandidateInvitationORM.organization_id)
+            .where(deadline < func.now(), ~CandidateAttemptORM.candidate_email_normalized.like("%@erased.invalid"))
+            .order_by(anchor)
+            .limit(limit)
+        )
+        return [(attempt, invitation) for attempt, invitation in (await self._session.execute(statement)).all()]
+
+    async def list_invitations_due_for_erasure(self, limit: int) -> list[CandidateInvitationORM]:
+        deadline = CandidateInvitationORM.expires_at + func.make_interval(0, 0, 0, OrganizationORM.retention_days)
+        statement = (
+            select(CandidateInvitationORM)
+            .join(OrganizationORM, OrganizationORM.id == CandidateInvitationORM.organization_id)
+            .outerjoin(CandidateAttemptORM, CandidateAttemptORM.invitation_id == CandidateInvitationORM.id)
+            .where(
+                CandidateAttemptORM.id.is_(None),
+                deadline < func.now(),
+                ~CandidateInvitationORM.candidate_email_normalized.like("%@erased.invalid"),
+            )
+            .order_by(CandidateInvitationORM.expires_at)
+            .limit(limit)
+        )
+        return list((await self._session.execute(statement)).scalars())
+
+    async def clear_decision_notes(self, attempt_id: UUID) -> None:
+        await self._session.execute(
+            update(HumanDecisionORM).where(HumanDecisionORM.attempt_id == attempt_id).values(private_note=None)
+        )
+        await self._session.execute(
+            update(HumanDecisionHistoryORM)
+            .where(HumanDecisionHistoryORM.attempt_id == attempt_id)
+            .values(private_note=None)
+        )
 
     async def create_audit_entry(self, entry: AuditLogORM) -> AuditLogORM:
         self._session.add(entry)
