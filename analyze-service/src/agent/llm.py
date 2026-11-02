@@ -53,6 +53,3 @@ class LLMFactory:
             case _:
                 valid = ", ".join(p.value for p in LLMProvider)
                 raise ValueError(f"Unknown LLM_PROVIDER: {provider!r}. Valid values: {valid}")
-
-
-llm = LLMFactory.create_llm()
