@@ -1,5 +1,5 @@
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
@@ -65,6 +65,15 @@ class SessionState(BaseModel):
     questions_asked: int = 0
     completion_reason: CompletionReason | None = None
     failure_code: str | None = None
+    paused_at: datetime | None = None
+    paused_seconds: float = 0.0
+
+    def active_elapsed(self, now: datetime) -> timedelta:
+        """Return the time since the start, excluding every pause."""
+        paused = self.paused_seconds
+        if self.paused_at is not None:
+            paused += (now - self.paused_at).total_seconds()
+        return max(timedelta(), now - self.started_at - timedelta(seconds=paused))
 
 
 def verify_quote(quote: QuoteRef, messages: Mapping[int, MessageRecord]) -> None:
@@ -120,6 +129,9 @@ def _apply(state: SessionState, event: SessionEvent) -> None:
 
     if state.status == SessionStatus.PAUSED:
         state.status = SessionStatus.IN_PROGRESS
+        if state.paused_at is not None:
+            state.paused_seconds += (event.occurred_at - state.paused_at).total_seconds()
+            state.paused_at = None
     state.last_seq = event.seq
     state.last_event_id = event.event_id
 
@@ -148,6 +160,7 @@ def _apply(state: SessionState, event: SessionEvent) -> None:
         )
     elif isinstance(event, SessionPaused):
         state.status = SessionStatus.PAUSED
+        state.paused_at = event.occurred_at
     elif isinstance(event, SessionCompleted):
         state.status = SessionStatus.COMPLETED
         state.completion_reason = event.reason
