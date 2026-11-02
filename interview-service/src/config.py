@@ -96,6 +96,14 @@ class RabbitMQSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="RABBITMQ_", env_file=".env", extra="ignore")
 
 
+class UserManagementSettings(BaseSettings):
+    url: str = "http://user-management:8000"
+    internal_service_token: str = ""
+    timeout_seconds: float = 5.0
+
+    model_config = SettingsConfigDict(env_prefix="USER_MANAGEMENT_", env_file=".env", extra="ignore")
+
+
 class AppSettings(BaseSettings):
     port: int = 8001
 
@@ -166,6 +174,8 @@ class Settings(BaseSettings):
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
     instance_settings: InstanceSettings = InstanceSettings()
+    user_management_settings: UserManagementSettings = UserManagementSettings()
+    interview_hello_timeout_seconds: float = 10.0
     graceful_shutdown_timeout_seconds: int = 30
 
     model_config = SettingsConfigDict(
