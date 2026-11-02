@@ -38,23 +38,6 @@ class PracticePlanJobMessage(BaseModel):
         return datetime.fromisoformat(value)
 
 
-class InterviewCompletedEvent(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    event_id: UUID
-    user_id: UUID
-    session_id: str
-    cv_correlation_id: str | None = None
-    published_at: datetime
-
-    @field_validator("published_at", mode="before")
-    @classmethod
-    def _parse_published_at(cls, value: datetime | str) -> datetime:
-        if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=UTC)
-        return datetime.fromisoformat(value)
-
-
 class PracticePlanReadyEvent(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
