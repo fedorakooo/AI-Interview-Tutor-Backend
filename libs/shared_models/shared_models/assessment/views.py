@@ -3,7 +3,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from shared_models.assessment.contracts import AssessmentTemplateSnapshot
+from shared_models.assessment.contracts import AssessmentTemplateSnapshot, CvPolicy
 from shared_models.assessment.evidence import EvidenceItem, Verdict
 from shared_models.assessment.report import Assessment, AssessmentCoverage, FocusAssessment
 from shared_models.assessment.session_state import SessionState
@@ -67,6 +67,16 @@ class ReviewRequest(BaseModel):
     author_id: UUID
     comment: str = Field(min_length=1, max_length=2000)
     manual_verdict: Verdict | None = None
+
+
+class TemplateDraftRequest(BaseModel):
+    brief: str = Field(min_length=1, max_length=8000)
+    job_description: str | None = Field(default=None, max_length=20000)
+    title: str | None = Field(default=None, max_length=200)
+    seniority: str | None = Field(default=None, max_length=64)
+    language: str = Field(default="en", pattern=r"^[a-z]{2,3}(-[A-Za-z]{2,4})?$")
+    cv_policy: CvPolicy = CvPolicy.REQUIRED
+    candidate_feedback: bool = False
 
 
 def build_overview(assessment: Assessment, template: AssessmentTemplateSnapshot) -> AssessmentOverview:
