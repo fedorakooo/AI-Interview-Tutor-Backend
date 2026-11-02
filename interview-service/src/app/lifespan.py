@@ -28,7 +28,6 @@ from src.infrastructure.redis.client import create_redis_client
 from src.infrastructure.redis.session_lock import RedisSessionLock
 from src.infrastructure.redis.session_presence import RedisSessionPresence
 from src.infrastructure.user_management.assessment_context_client import UserManagementAssessmentContextClient
-from src.legacy.runtime import legacy_runtime
 
 
 @asynccontextmanager
@@ -36,6 +35,9 @@ async def lifespan(app: FastAPI):
     user_management = settings.user_management_settings
     mongo_settings = settings.mongo_settings
     mongo_client = AsyncIOMotorClient(mongo_settings.url)
+    redis_client = create_redis_client()
+    app.state.mongo_client = mongo_client
+    app.state.redis_client = redis_client
     journal = MongoEventJournal(mongo_client[mongo_settings.db_name][mongo_settings.interview_events_collection_name])
     await journal.ensure_indexes()
     assessment_store = MongoAssessmentStore(
@@ -66,7 +68,7 @@ async def lifespan(app: FastAPI):
         )
         app.state.interview_session_service = InterviewSessionService(
             journal=journal,
-            lock=RedisSessionLock(create_redis_client()),
+            lock=RedisSessionLock(redis_client),
             evaluator=PydanticAnswerEvaluator(parse_model_specs(settings.interview_evaluator_models)),
             interviewer=PydanticInterviewerAgent(parse_model_specs(settings.interview_interviewer_models)),
             cv_provider=MongoCandidateCvProvider(
@@ -78,7 +80,7 @@ async def lifespan(app: FastAPI):
             ),
             completed_publisher=completed_publisher,
             completion_outbox=completion_outbox,
-            presence=RedisSessionPresence(create_redis_client()),
+            presence=RedisSessionPresence(redis_client),
         )
         app.state.assessment_report_service = AssessmentReportService(
             journal=journal,
@@ -87,7 +89,7 @@ async def lifespan(app: FastAPI):
         )
         database = mongo_client[mongo_settings.db_name]
         app.state.attempt_erasure_service = AttemptErasureService(
-            RedisSessionLock(create_redis_client()),
+            RedisSessionLock(redis_client),
             MongoAttemptDataEraser(
                 events=database[mongo_settings.interview_events_collection_name],
                 assessments=database[mongo_settings.interview_assessments_collection_name],
@@ -105,9 +107,9 @@ async def lifespan(app: FastAPI):
             PydanticSpecDrafter(parse_model_specs(settings.interview_spec_models))
         )
         try:
-            async with legacy_runtime(app):
-                yield
+            yield
         finally:
             await completion_dispatcher.stop()
             await completed_publisher.close()
+    await redis_client.aclose()
     mongo_client.close()

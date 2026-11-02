@@ -1,27 +1,9 @@
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-BASE_DIR = Path(__file__).parent
-SOFT_QUESTIONS_JSON_PATH = BASE_DIR / "data" / "soft_questions.json"
-
-
-class LLMProvider(str, Enum):
-    OPENAI = "openai"
-    OPENROUTER = "openrouter"
-    GOOGLE = "google"
-
-
-class LLMConfig(BaseSettings):
-    model: str
-    temperature: float = 0.6
-    api_base: str | None = None
-
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 class MongoSettings(BaseSettings):
@@ -32,8 +14,6 @@ class MongoSettings(BaseSettings):
     auth_source: str = "ai_interview"
     db_name: str = "ai_interview"
     cv_analysis_collection_name: str = "cv_analysis"
-    cv_user_id_field: str = "user_id"
-    interview_sessions_collection_name: str = "interview_sessions"
     interview_events_collection_name: str = "interview_events"
     interview_assessments_collection_name: str = "interview_assessments"
     interview_feedback_collection_name: str = "interview_feedback"
@@ -56,35 +36,14 @@ class JWTSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
-class PostgresCheckpointSettings(BaseSettings):
-    user: str = "postgres"
-    host: str = "postgres"
-    port: int = 5432
-    name: str = "interview"
-    password: str = "postgres"
-
-    @property
-    def url(self) -> str:
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
-
-    model_config = SettingsConfigDict(env_prefix="POSTGRES_CHECKPOINT_", env_file=".env", extra="ignore")
-
-
 class RedisSettings(BaseSettings):
     host: str = "redis"
     port: int = 6379
     password: str = "redis"
     user: str = "app"
     decode_responses: bool = True
-    session_ttl_seconds: int = 7200
 
     model_config = SettingsConfigDict(env_prefix="REDIS_", env_file=".env", extra="ignore")
-
-
-class InstanceSettings(BaseSettings):
-    id: str = ""
-
-    model_config = SettingsConfigDict(env_prefix="INSTANCE_", env_file=".env", extra="ignore")
 
 
 class RabbitMQSettings(BaseSettings):
@@ -92,7 +51,6 @@ class RabbitMQSettings(BaseSettings):
     port: int = 5672
     user: str = "guest"
     password: str = "guest"
-    interview_completed_queue_name: str = "interview-completed-stream"
     assessment_completed_queue_name: str = "assessment-completed"
 
     @property
@@ -136,61 +94,25 @@ class LoggerSettings(BaseSettings):
 class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
-    allow_sample_cv_fallback: bool = False
-    billing_service_url: str = Field(default="", validation_alias="BILLING_SERVICE_URL")
-    sample_interview_rate_limit_per_hour: int = Field(default=5, validation_alias="SAMPLE_INTERVIEW_RATE_LIMIT")
     cors_allowed_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000", "http://localhost"])
 
-    llm_provider: LLMProvider = LLMProvider.OPENAI
-
-    openai_api_key: str = ""
-    openai_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gpt-4o-mini"))
-
-    openrouter_api_key: str = ""
-    openrouter_llm: LLMConfig = Field(
-        default_factory=lambda: LLMConfig(
-            model="openai/gpt-4o-mini",
-            api_base="https://openrouter.ai/api/v1",
-        )
+    interview_hello_timeout_seconds: float = 10.0
+    internal_service_token: str = Field(default="", validation_alias="INTERNAL_SERVICE_TOKEN")
+    interview_evaluator_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_EVALUATOR_MODELS")
+    interview_interviewer_models: str = Field(
+        default="openai:gpt-4o-mini", validation_alias="INTERVIEW_INTERVIEWER_MODELS"
     )
-
-    google_api_key: str = ""
-    google_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gemini-2.0-flash"))
-
-    interview_llm_temperature: float | None = Field(default=None, validation_alias="INTERVIEW_LLM__TEMPERATURE")
-    interview_grading_model: str = Field(default="", validation_alias="INTERVIEW_GRADING_MODEL")
-    interview_report_model: str = Field(default="", validation_alias="INTERVIEW_REPORT_MODEL")
-
-    @property
-    def model_routing(self) -> dict[str, dict[str, str | float]]:
-        """Env-based model routing: cheap models for grading, stronger for final report."""
-        routing: dict[str, dict[str, str | float]] = {}
-        if self.interview_grading_model:
-            routing["evaluate_answer"] = {"model": self.interview_grading_model, "temperature": 0.2}
-            routing["question_router"] = {"model": self.interview_grading_model, "temperature": 0.3}
-        if self.interview_report_model:
-            routing["generate_report"] = {"model": self.interview_report_model, "temperature": 0.4}
-        return routing
+    interview_report_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_REPORT_MODELS")
+    interview_spec_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_SPEC_MODELS")
+    interview_feedback_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_FEEDBACK_MODELS")
 
     logger_settings: LoggerSettings = LoggerSettings()
     app_settings: AppSettings = AppSettings()
     mongo_settings: MongoSettings = MongoSettings()
     jwt_settings: JWTSettings = JWTSettings()
-    postgres_checkpoint_settings: PostgresCheckpointSettings = PostgresCheckpointSettings()
     redis_settings: RedisSettings = RedisSettings()
     rabbitmq_settings: RabbitMQSettings = RabbitMQSettings()
-    instance_settings: InstanceSettings = InstanceSettings()
     user_management_settings: UserManagementSettings = UserManagementSettings()
-    interview_hello_timeout_seconds: float = 10.0
-    internal_service_token: str = Field(default="", validation_alias="INTERNAL_SERVICE_TOKEN")
-    interview_report_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_REPORT_MODELS")
-    interview_spec_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_SPEC_MODELS")
-    interview_feedback_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_FEEDBACK_MODELS")
-    interview_evaluator_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_EVALUATOR_MODELS")
-    interview_interviewer_models: str = Field(
-        default="openai:gpt-4o-mini", validation_alias="INTERVIEW_INTERVIEWER_MODELS"
-    )
-    graceful_shutdown_timeout_seconds: int = 30
 
     model_config = SettingsConfigDict(
         env_file=".env",
