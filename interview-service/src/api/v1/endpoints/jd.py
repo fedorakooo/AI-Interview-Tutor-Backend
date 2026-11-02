@@ -76,7 +76,8 @@ async def jd_match(
             cv_skills.add(str(name).lower())
     for exp in getattr(cv, "experience", None) or []:
         if isinstance(exp, ExperienceItem):
-            blob = " ".join(exp.responsibilities)
+            cv_skills.update(technology.lower() for technology in exp.technologies)
+            blob = " ".join([*exp.responsibilities, *(achievement.description for achievement in exp.achievements)])
             blob = f"{blob} {exp.role or ''}"
         else:
             blob = " ".join(getattr(exp, "responsibilities", None) or [])

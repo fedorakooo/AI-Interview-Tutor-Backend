@@ -6,7 +6,7 @@ from logging import Logger
 from dependency_injector.wiring import Provide, inject
 
 from src.config import settings
-from src.containers.container import Container
+from src.container import Container
 from src.domain.adapters.inbound.rabbitmq_consumer import IRabbitMQConsumer
 
 
@@ -43,11 +43,13 @@ def wait_for_rabbitmq(
 
 @inject
 async def main(
-    rabbitmq_consumer: IRabbitMQConsumer = Provide[Container.inbound_adapters.rabbitmq_consumer],
-    mongo_repository=Provide[Container.outbound_adapters.mongo_cv_analysis_repository],
+    rabbitmq_consumer: IRabbitMQConsumer = Provide[Container.rabbitmq_consumer],
+    mongo_repository=Provide[Container.mongo_cv_analysis_repository],
 ) -> None:
     _init_observability()
+
     wait_for_rabbitmq()
+
     await mongo_repository.ensure_indexes()
 
     await rabbitmq_consumer.process_messages()
@@ -55,6 +57,7 @@ async def main(
 
 if __name__ == "__main__":
     container = Container()
+
     container.wire(modules=[__name__])
 
     container.init_resources()
