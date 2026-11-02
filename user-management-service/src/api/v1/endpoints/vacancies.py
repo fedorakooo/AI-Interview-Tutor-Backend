@@ -6,12 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from jwt_handler.value_objects import AccessTokenPayload
 from pydantic import BaseModel, Field
 from shared_models.assessment import AssessmentOverview, FocusDetail, ReviewRequest
-from shared_models.assessment.contracts import AssessmentTemplateSnapshot, HumanDecisionType, VacancyStatus
+from shared_models.assessment.contracts import AssessmentTemplateSnapshot, CvPolicy, HumanDecisionType, VacancyStatus
 from shared_models.assessment.evidence import Verdict
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.database import get_unit_of_work
-from src.api.dependencies.assessment import get_interview_report_client, get_invitation_token_handler
+from src.api.dependencies.assessment import (
+    get_interview_report_client,
+    get_interview_spec_client,
+    get_invitation_token_handler,
+)
 from src.api.security import require_authenticated, require_org_role
 from src.application.use_cases.vacancies import (
     ActivateVacancyUseCase,
@@ -22,6 +26,7 @@ from src.application.use_cases.vacancies import (
     UpdateVacancyUseCase,
 )
 from src.domain.entities.organization import OrganizationMember
+from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.domain.value_objects.organization_role import OrganizationRole
 from src.application.use_cases.assessments import CreateInvitationUseCase, RevokeInvitationUseCase
@@ -31,7 +36,9 @@ from src.domain.exceptions.interview_report_errors import (
     InterviewReportNotReadyError,
     InterviewReportUnavailableError,
 )
+from src.application.use_cases.template_drafts import GenerateTemplateDraftUseCase
 from src.domain.interfaces.reports.interview_report_client import IInterviewReportClient
+from src.domain.interfaces.reports.interview_spec_client import IInterviewSpecClient
 from src.infrastructure.auth.invitation_token_handler import InvitationTokenHandler
 
 router = APIRouter(prefix="/organizations/{organization_id}/vacancies", tags=["Vacancies"])
@@ -85,6 +92,13 @@ class ReportView(BaseModel):
     status: str
     report_reference: str
     report_version: int | None
+
+
+class TemplateDraftBody(BaseModel):
+    brief: str = Field(min_length=1, max_length=8_000)
+    language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}(-[A-Za-z]{2,4})?$")
+    cv_policy: CvPolicy = CvPolicy.REQUIRED
+    candidate_feedback: bool = False
 
 
 class FocusReviewRequest(BaseModel):
@@ -174,6 +188,25 @@ async def update_vacancy(
     _require_feature()
     vacancy = await UpdateVacancyUseCase(uow)(vacancy_id, organization_id, body.model_dump(exclude_none=True))
     return VacancyView.model_validate(vacancy, from_attributes=True)
+
+
+@router.post("/{vacancy_id}/template/draft", response_model=AssessmentTemplateSnapshot)
+async def create_template_draft(
+    organization_id: UUID, vacancy_id: UUID, body: TemplateDraftBody,
+    payload: Annotated[AccessTokenPayload, Depends(require_authenticated)],
+    uow: Annotated[IUnitOfWork, Depends(get_unit_of_work)],
+    spec_client: Annotated[IInterviewSpecClient, Depends(get_interview_spec_client)],
+    _: Annotated[OrganizationMember, Depends(require_org_role(OrganizationRole.ADMIN, OrganizationRole.RECRUITER))],
+) -> AssessmentTemplateSnapshot:
+    _require_feature()
+    try:
+        return await GenerateTemplateDraftUseCase(uow, spec_client)(
+            organization_id, vacancy_id, UUID(payload["id"]), body.brief, body.language, body.cv_policy, body.candidate_feedback
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vacancy not found") from exc
+    except (InterviewReportNotFoundError, InterviewReportNotReadyError, InterviewReportUnavailableError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Draft service unavailable") from exc
 
 
 @router.put("/{vacancy_id}/template", response_model=VacancyView)
