@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -77,6 +78,20 @@ class TemplateDraftRequest(BaseModel):
     language: str = Field(default="en", pattern=r"^[a-z]{2,3}(-[A-Za-z]{2,4})?$")
     cv_policy: CvPolicy = CvPolicy.REQUIRED
     candidate_feedback: bool = False
+
+
+class FeedbackView(BaseModel):
+    attempt_id: UUID
+    version: int = Field(ge=1)
+    text: str = Field(min_length=1, max_length=4000)
+    source: Literal["generated", "edited"]
+    editor_id: UUID | None = None
+    created_at: datetime
+
+
+class FeedbackEditRequest(BaseModel):
+    editor_id: UUID
+    text: str = Field(min_length=1, max_length=4000)
 
 
 def build_overview(assessment: Assessment, template: AssessmentTemplateSnapshot) -> AssessmentOverview:
