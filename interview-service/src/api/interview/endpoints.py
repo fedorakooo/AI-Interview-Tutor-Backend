@@ -202,7 +202,9 @@ async def interview_ws(
         ),
     )
 
+    presence_token: str | None = None
     try:
+        presence_token = await service.register_connection(connection)
         await _replay(websocket, await service.list_events(connection), hello.last_event_id)
         if not await _stream_guarded(websocket, service.open_session(connection)):
             return
@@ -220,6 +222,7 @@ async def interview_ws(
         pass
     finally:
         try:
-            await service.pause_session(connection)
+            if presence_token is not None:
+                await service.pause_session(connection, presence_token)
         except Exception:
             app_logger.exception("Pausing the interview session failed")

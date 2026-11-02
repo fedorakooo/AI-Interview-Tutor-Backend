@@ -278,3 +278,13 @@ def test_internal_api_reports_unfinished_interviews_and_unknown_focus() -> None:
 
     finished = api(Harness(texts()))
     assert finished.get(f"/api/internal/reports/{ATTEMPT_ID}/focus/unknown").status_code == 404
+
+
+def test_internal_api_rejects_a_non_ascii_token_with_401_instead_of_failing() -> None:
+    client = api(Harness(texts()))
+
+    response = client.get(
+        f"/api/internal/reports/{ATTEMPT_ID}", headers={"X-Internal-Service-Token": "tökén".encode("latin-1")}
+    )
+
+    assert response.status_code == 401

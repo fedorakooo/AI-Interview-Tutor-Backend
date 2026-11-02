@@ -11,9 +11,11 @@ from src.domain.interfaces.assessment_completed_publisher import IAssessmentComp
 from src.domain.interfaces.assessment_store import IAssessmentStore
 from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
 from src.domain.interfaces.candidate_cv_provider import ICandidateCvProvider
+from src.domain.interfaces.completion_outbox import ICompletionOutbox
 from src.domain.interfaces.event_journal import IEventJournal
 from src.domain.interfaces.interviewer_agent import IInterviewerAgent
 from src.domain.interfaces.session_lock import ISessionLock
+from src.domain.interfaces.session_presence import ISessionPresence
 from src.domain.interview.dto import EvaluationRequest, EvaluationResult, EvidenceDraft, InterviewerRequest
 from src.domain.interview.engine import AskFocus, AskIntro
 from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts
@@ -152,3 +154,36 @@ class ScriptedTextWriter(IAssessmentTextWriter):
         if self.fail or self.texts is None:
             raise RuntimeError("model unavailable")
         return self.texts
+
+
+class InMemoryCompletionOutbox(ICompletionOutbox):
+    def __init__(self) -> None:
+        self.events: dict[UUID, AssessmentCompleted] = {}
+        self.published: set[UUID] = set()
+
+    async def enqueue(self, event: AssessmentCompleted) -> None:
+        self.events.setdefault(event.event_id, event)
+
+    async def list_pending(self, limit: int) -> list[AssessmentCompleted]:
+        return [e for e in self.events.values() if e.event_id not in self.published][:limit]
+
+    async def mark_published(self, event_id: UUID) -> None:
+        self.published.add(event_id)
+
+
+class InMemoryPresence(ISessionPresence):
+    def __init__(self) -> None:
+        self.current: dict[str, str] = {}
+        self.counter = 0
+
+    async def claim(self, session_id: str) -> str:
+        self.counter += 1
+        token = f"connection-{self.counter}"
+        self.current[session_id] = token
+        return token
+
+    async def release(self, session_id: str, token: str) -> bool:
+        if self.current.get(session_id) == token:
+            del self.current[session_id]
+            return True
+        return False

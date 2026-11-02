@@ -37,6 +37,7 @@ class MongoSettings(BaseSettings):
     interview_events_collection_name: str = "interview_events"
     interview_assessments_collection_name: str = "interview_assessments"
     interview_feedback_collection_name: str = "interview_feedback"
+    interview_completion_outbox_collection_name: str = "interview_completion_outbox"
     interview_assessment_reviews_collection_name: str = "interview_assessment_reviews"
 
     @property

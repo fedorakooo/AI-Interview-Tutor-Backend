@@ -21,8 +21,10 @@ from src.domain.interfaces.assessment_context_client import IAssessmentContextCl
 from tests.conftest import PUBLIC_KEY
 from tests.unit_tests.fakes import (
     FakeCvProvider,
+    InMemoryCompletionOutbox,
     InMemoryJournal,
     InMemoryLock,
+    InMemoryPresence,
     RecordingPublisher,
     ScriptedEvaluator,
     ScriptedInterviewer,
@@ -71,6 +73,8 @@ class Backend:
             interviewer=ScriptedInterviewer(),
             cv_provider=FakeCvProvider(CVData()),
             completed_publisher=self.publisher,
+            completion_outbox=InMemoryCompletionOutbox(),
+            presence=InMemoryPresence(),
         )
 
     def client(self) -> TestClient:

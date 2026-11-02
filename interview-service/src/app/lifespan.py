@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
+from src.application.interview.completion_dispatcher import CompletionOutboxDispatcher
 from src.application.interview.erasure_service import AttemptErasureService
 from src.application.interview.feedback_service import CandidateFeedbackService
 from src.application.interview.report_service import AssessmentReportService
@@ -19,11 +20,13 @@ from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
 from src.infrastructure.mongo_attempt_data_eraser import MongoAttemptDataEraser
 from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
+from src.infrastructure.mongo_completion_outbox import MongoCompletionOutbox
 from src.infrastructure.mongo_event_journal import MongoEventJournal
 from src.infrastructure.mongo_feedback_store import MongoFeedbackStore
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
 from src.infrastructure.redis.client import create_redis_client
 from src.infrastructure.redis.session_lock import RedisSessionLock
+from src.infrastructure.redis.session_presence import RedisSessionPresence
 from src.infrastructure.user_management.assessment_context_client import UserManagementAssessmentContextClient
 from src.legacy.runtime import legacy_runtime
 
@@ -44,6 +47,16 @@ async def lifespan(app: FastAPI):
         mongo_client[mongo_settings.db_name][mongo_settings.interview_feedback_collection_name]
     )
     await feedback_store.ensure_indexes()
+    completion_outbox = MongoCompletionOutbox(
+        mongo_client[mongo_settings.db_name][mongo_settings.interview_completion_outbox_collection_name]
+    )
+    await completion_outbox.ensure_indexes()
+    completed_publisher = AssessmentCompletedPublisher(
+        amqp_url=settings.rabbitmq_settings.url,
+        queue_name=settings.rabbitmq_settings.assessment_completed_queue_name,
+    )
+    completion_dispatcher = CompletionOutboxDispatcher(completion_outbox, completed_publisher)
+    await completion_dispatcher.start()
 
     async with httpx.AsyncClient(timeout=user_management.timeout_seconds) as http_client:
         app.state.assessment_context_client = UserManagementAssessmentContextClient(
@@ -63,10 +76,9 @@ async def lifespan(app: FastAPI):
                     collection_name=mongo_settings.cv_analysis_collection_name,
                 )
             ),
-            completed_publisher=AssessmentCompletedPublisher(
-                amqp_url=settings.rabbitmq_settings.url,
-                queue_name=settings.rabbitmq_settings.assessment_completed_queue_name,
-            ),
+            completed_publisher=completed_publisher,
+            completion_outbox=completion_outbox,
+            presence=RedisSessionPresence(create_redis_client()),
         )
         app.state.assessment_report_service = AssessmentReportService(
             journal=journal,
@@ -92,6 +104,10 @@ async def lifespan(app: FastAPI):
         app.state.spec_draft_service = SpecDraftService(
             PydanticSpecDrafter(parse_model_specs(settings.interview_spec_models))
         )
-        async with legacy_runtime(app):
-            yield
+        try:
+            async with legacy_runtime(app):
+                yield
+        finally:
+            await completion_dispatcher.stop()
+            await completed_publisher.close()
     mongo_client.close()

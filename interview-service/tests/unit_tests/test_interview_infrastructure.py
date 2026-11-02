@@ -73,7 +73,7 @@ class FakeRedis:
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
 
-    async def set(self, key: str, value: str, nx: bool, px: int) -> bool:
+    async def set(self, key: str, value: str, nx: bool = False, px: int | None = None, ex: int | None = None) -> bool:
         if nx and key in self.values:
             return False
         self.values[key] = value
@@ -205,3 +205,136 @@ async def test_assessment_store_appends_reviews_in_creation_order() -> None:
     reviews = await store.list_reviews(attempt_id)
 
     assert [entry.comment for entry in reviews["databases"]] == ["first", "second"]
+
+
+async def test_presence_keeps_only_the_latest_connection_releasable() -> None:
+    from src.infrastructure.redis.session_presence import RedisSessionPresence
+
+    presence = RedisSessionPresence(FakeRedis())
+
+    old = await presence.claim("session-1")
+    new = await presence.claim("session-1")
+
+    assert await presence.release("session-1", old) is False
+    assert await presence.release("session-1", new) is True
+    assert await presence.release("session-1", new) is False
+
+
+class FakeOutboxCollection:
+    def __init__(self) -> None:
+        self.documents: list[dict] = []
+
+    async def create_index(self, keys, **kwargs) -> None:
+        return None
+
+    async def insert_one(self, document: dict) -> None:
+        if any(d["event_id"] == document["event_id"] for d in self.documents):
+            raise DuplicateKeyError("duplicate")
+        self.documents.append(dict(document))
+
+    def find(self, query: dict, projection: dict):
+        found = sorted(
+            (d for d in self.documents if d["published"] == query["published"]), key=lambda d: d["created_at"]
+        )
+
+        class Cursor:
+            def sort(self, key, direction):
+                return self
+
+            async def to_list(self, length):
+                return found[:length]
+
+        return Cursor()
+
+    async def update_one(self, query: dict, update: dict) -> None:
+        for document in self.documents:
+            if document["event_id"] == query["event_id"]:
+                document.update(update["$set"])
+
+
+async def test_completion_outbox_stores_once_and_lists_only_unpublished_events() -> None:
+    from datetime import UTC, datetime
+
+    from shared_models.assessment import AssessmentCompleted
+    from src.infrastructure.mongo_completion_outbox import MongoCompletionOutbox
+
+    outbox = MongoCompletionOutbox(FakeOutboxCollection())
+    event = AssessmentCompleted(
+        event_id=uuid4(),
+        occurred_at=datetime(2026, 11, 3, tzinfo=UTC),
+        correlation_id=uuid4(),
+        organization_id=uuid4(),
+        vacancy_id=uuid4(),
+        invitation_id=uuid4(),
+        attempt_id=uuid4(),
+        session_id="s",
+        report_reference="interview-report:s",
+    )
+
+    await outbox.enqueue(event)
+    await outbox.enqueue(event)
+
+    assert await outbox.list_pending(10) == [event]
+    await outbox.mark_published(event.event_id)
+    assert await outbox.list_pending(10) == []
+
+
+async def test_publisher_reuses_one_connection_and_channel(monkeypatch) -> None:
+    import aio_pika
+    from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
+
+    opened = []
+
+    class Exchange:
+        published = 0
+
+        async def publish(self, message, routing_key):
+            Exchange.published += 1
+
+    class Channel:
+        is_closed = False
+        default_exchange = Exchange()
+
+        async def declare_queue(self, name, durable):
+            return None
+
+    class Connection:
+        is_closed = False
+
+        async def channel(self):
+            return Channel()
+
+        async def close(self):
+            self.is_closed = True
+
+    async def connect(url):
+        opened.append(url)
+        return Connection()
+
+    monkeypatch.setattr(aio_pika, "connect_robust", connect)
+    publisher = AssessmentCompletedPublisher("amqp://x", "assessment-completed")
+    event = AssessmentCompleted_event()
+
+    await publisher.publish(event)
+    await publisher.publish(event)
+    await publisher.close()
+
+    assert opened == ["amqp://x"] and Exchange.published == 2
+
+
+def AssessmentCompleted_event():
+    from datetime import UTC, datetime
+
+    from shared_models.assessment import AssessmentCompleted
+
+    return AssessmentCompleted(
+        event_id=uuid4(),
+        occurred_at=datetime(2026, 11, 3, tzinfo=UTC),
+        correlation_id=uuid4(),
+        organization_id=uuid4(),
+        vacancy_id=uuid4(),
+        invitation_id=uuid4(),
+        attempt_id=uuid4(),
+        session_id="s",
+        report_reference="interview-report:s",
+    )

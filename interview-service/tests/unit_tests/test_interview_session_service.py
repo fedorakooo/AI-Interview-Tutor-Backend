@@ -24,8 +24,10 @@ from src.domain.interview.dto import EvaluationResult
 from tests.unit_tests.fakes import (
     FIXED_NOW,
     FakeCvProvider,
+    InMemoryCompletionOutbox,
     InMemoryJournal,
     InMemoryLock,
+    InMemoryPresence,
     RecordingPublisher,
     ScriptedEvaluator,
     ScriptedInterviewer,
@@ -42,6 +44,8 @@ class Harness:
         self.interviewer = ScriptedInterviewer()
         self.cv_provider = FakeCvProvider(cv)
         self.publisher = RecordingPublisher()
+        self.outbox = InMemoryCompletionOutbox()
+        self.presence = InMemoryPresence()
         self.now = FIXED_NOW
         self.service = InterviewSessionService(
             journal=self.journal,
@@ -50,6 +54,8 @@ class Harness:
             interviewer=self.interviewer,
             cv_provider=self.cv_provider,
             completed_publisher=self.publisher,
+            completion_outbox=self.outbox,
+            presence=self.presence,
             clock=lambda: self.now,
         )
 
@@ -290,24 +296,96 @@ async def test_time_budget_ends_the_interview() -> None:
 
 async def test_disconnect_pauses_only_a_running_session() -> None:
     harness = Harness()
-    await harness.service.pause_session(harness.connection)
+    token = await harness.service.register_connection(harness.connection)
+    await harness.service.pause_session(harness.connection, token)
     assert harness.journal.events == {}
 
+    token = await harness.service.register_connection(harness.connection)
     await harness.open()
-    await harness.service.pause_session(harness.connection)
-    await harness.service.pause_session(harness.connection)
+    await harness.service.pause_session(harness.connection, token)
+    await harness.service.pause_session(harness.connection, token)
 
     events = harness.journal.events[harness.session_id]
     assert len([e for e in events if isinstance(e, SessionPaused)]) == 1
     assert (await harness.state()).status == SessionStatus.PAUSED
 
 
+async def test_a_superseded_connection_does_not_pause_the_resumed_session() -> None:
+    harness = Harness()
+    old_token = await harness.service.register_connection(harness.connection)
+    await harness.open()
+    new_token = await harness.service.register_connection(harness.connection)
+
+    await harness.service.pause_session(harness.connection, old_token)
+
+    assert (await harness.state()).status == SessionStatus.IN_PROGRESS
+    await harness.service.pause_session(harness.connection, new_token)
+    assert (await harness.state()).status == SessionStatus.PAUSED
+
+
 async def test_resumed_session_continues_after_a_pause() -> None:
     harness = Harness()
+    token = await harness.service.register_connection(harness.connection)
     await harness.open()
-    await harness.service.pause_session(harness.connection)
+    await harness.service.pause_session(harness.connection, token)
 
     outputs = await harness.answer("answer after reconnecting")
 
     assert isinstance(outputs[-1], InterviewerMessage)
     assert (await harness.state()).status == SessionStatus.IN_PROGRESS
+
+
+async def test_time_spent_disconnected_does_not_use_up_the_time_budget() -> None:
+    harness = Harness()
+    token = await harness.service.register_connection(harness.connection)
+    await harness.open()
+    harness.now += timedelta(minutes=5)
+    await harness.service.pause_session(harness.connection, token)
+    harness.now += timedelta(minutes=harness.context.template.duration_minutes + 10)
+
+    outputs = await harness.answer("back after a long break")
+
+    assert isinstance(outputs[-1], InterviewerMessage) and outputs[-1].kind != MessageKind.CLOSING
+
+
+async def test_completion_is_stored_durably_before_publishing_and_survives_a_broker_outage() -> None:
+    harness = Harness()
+    harness.publisher.fail = True
+
+    await run_to_completion(harness)
+
+    [event] = harness.outbox.list_pending.__self__.events.values()
+    assert harness.outbox.published == set() and harness.publisher.events == []
+    assert [e.event_id for e in await harness.outbox.list_pending(10)] == [event.event_id]
+
+
+async def test_the_dispatcher_publishes_pending_completions_once_the_broker_recovers() -> None:
+    from src.application.interview.completion_dispatcher import CompletionOutboxDispatcher
+
+    harness = Harness()
+    harness.publisher.fail = True
+    await run_to_completion(harness)
+    dispatcher = CompletionOutboxDispatcher(harness.outbox, harness.publisher)
+
+    assert await dispatcher.dispatch_once() == 0
+    harness.publisher.fail = False
+    assert await dispatcher.dispatch_once() == 1
+    assert await dispatcher.dispatch_once() == 0
+    assert len(harness.publisher.events) == 1 and await harness.outbox.list_pending(10) == []
+
+
+async def test_a_published_completion_is_marked_and_not_retried() -> None:
+    harness = Harness()
+
+    await run_to_completion(harness)
+
+    assert len(harness.outbox.published) == 1 and await harness.outbox.list_pending(10) == []
+
+
+async def test_the_cv_is_fetched_once_per_session_service() -> None:
+    harness = Harness()
+    await harness.open()
+    await harness.answer("first answer")
+    await harness.answer("second answer")
+
+    assert len(harness.cv_provider.requested) == 1

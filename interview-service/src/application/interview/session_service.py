@@ -26,9 +26,11 @@ from src.domain.exceptions.session_errors import NoPendingQuestionError, Session
 from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
 from src.domain.interfaces.candidate_cv_provider import ICandidateCvProvider
+from src.domain.interfaces.completion_outbox import ICompletionOutbox
 from src.domain.interfaces.event_journal import IEventJournal
 from src.domain.interfaces.interviewer_agent import IInterviewerAgent
 from src.domain.interfaces.session_lock import ISessionLock
+from src.domain.interfaces.session_presence import ISessionPresence
 from src.domain.interview.dto import EvaluationRequest, EvaluationResult, InterviewerRequest
 from src.domain.interview.engine import ASKING_KINDS, AskFocus, AskIntro, Complete, InterviewEngine, NextAction
 from src.domain.interview.evidence import build_evidence_items
@@ -36,6 +38,7 @@ from src.logger import app_logger
 
 COMPLETION_NAMESPACE = UUID("8d7b6c5e-3f2a-4e1b-a9c0-4b5d6e7f8a90")
 TRANSCRIPT_TAIL = 8
+CV_CACHE_SIZE = 256
 
 
 @dataclass(frozen=True)
@@ -57,6 +60,8 @@ class InterviewSessionService:
         interviewer: IInterviewerAgent,
         cv_provider: ICandidateCvProvider,
         completed_publisher: IAssessmentCompletedPublisher,
+        completion_outbox: ICompletionOutbox,
+        presence: ISessionPresence,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._journal = journal
@@ -65,7 +70,10 @@ class InterviewSessionService:
         self._interviewer = interviewer
         self._cv_provider = cv_provider
         self._completed_publisher = completed_publisher
+        self._completion_outbox = completion_outbox
+        self._presence = presence
         self._clock = clock
+        self._cv_cache: dict[UUID, CVData] = {}
 
     async def list_events(self, connection: InterviewConnection) -> list[SessionEvent]:
         return await self._journal.list_events(str(connection.attempt_id))
@@ -122,8 +130,13 @@ class InterviewSessionService:
             async for output in self._advance(connection, events, turn_id):
                 yield output
 
-    async def pause_session(self, connection: InterviewConnection) -> None:
+    async def register_connection(self, connection: InterviewConnection) -> str:
+        return await self._presence.claim(str(connection.attempt_id))
+
+    async def pause_session(self, connection: InterviewConnection, token: str) -> None:
         session_id = str(connection.attempt_id)
+        if not await self._presence.release(session_id, token):
+            return
         async with self._lock.hold(session_id):
             events = await self._journal.list_events(session_id)
             if not events or fold_events(events).status != SessionStatus.IN_PROGRESS:
@@ -157,9 +170,16 @@ class InterviewSessionService:
         context = connection.context
         if context.cv_correlation_id is None:
             return None
+        cached = self._cv_cache.get(context.cv_correlation_id)
+        if cached is not None:
+            return cached
         cv = await self._cv_provider.get(context.cv_correlation_id)
         if cv is None and context.cv_policy == CvPolicy.REQUIRED:
             raise AssessmentNotReadyError()
+        if cv is not None:
+            if len(self._cv_cache) >= CV_CACHE_SIZE:
+                self._cv_cache.clear()
+            self._cv_cache[context.cv_correlation_id] = cv
         return cv
 
     @staticmethod
@@ -243,7 +263,7 @@ class InterviewSessionService:
     ) -> AsyncIterator[SessionOutput]:
         template = connection.context.template
         state = fold_events(events)
-        action = InterviewEngine(template).next_action(state, self._clock() - state.started_at)
+        action = InterviewEngine(template).next_action(state, state.active_elapsed(self._clock()))
         cv = await self._load_cv(connection) if state.cv_attached else None
         request = self._interviewer_request(connection, state, action, cv)
 
@@ -333,6 +353,8 @@ class InterviewSessionService:
             report_version=1,
         )
         try:
+            await self._completion_outbox.enqueue(event)
             await self._completed_publisher.publish(event)
+            await self._completion_outbox.mark_published(event.event_id)
         except Exception:
             app_logger.exception("Publishing AssessmentCompleted failed for session %s", session_id)
