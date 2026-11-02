@@ -1,12 +1,11 @@
-import hmac
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from shared_models.assessment import AssessmentOverview, AssessmentTemplateSnapshot, FocusDetail, ReviewRequest
 
+from src.api.internal.auth import require_internal_service
 from src.application.interview.report_service import AssessmentReportService
-from src.config import settings
 from src.domain.exceptions.assessment_context_errors import (
     AssessmentContextNotFoundError,
     AssessmentContextUnavailableError,
@@ -14,15 +13,6 @@ from src.domain.exceptions.assessment_context_errors import (
 )
 from src.domain.exceptions.report_errors import FocusNotFoundError, ReportNotReadyError
 from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
-
-
-async def require_internal_service(
-    token: Annotated[str | None, Header(alias="X-Internal-Service-Token")] = None,
-) -> None:
-    configured = settings.internal_service_token
-    if not configured or token is None or not hmac.compare_digest(token, configured):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid internal credentials")
-
 
 router = APIRouter(
     prefix="/api/internal/reports",

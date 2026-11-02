@@ -5,11 +5,13 @@ from fastapi import FastAPI
 from motor.motor_asyncio import AsyncIOMotorClient
 from src.application.interview.report_service import AssessmentReportService
 from src.application.interview.session_service import InterviewSessionService
+from src.application.interview.spec_service import SpecDraftService
 from src.config import settings
 from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter
 from src.infrastructure.ai.evaluator import PydanticAnswerEvaluator
 from src.infrastructure.ai.interviewer import PydanticInterviewerAgent
 from src.infrastructure.ai.models import parse_model_specs
+from src.infrastructure.ai.spec_agent import PydanticSpecDrafter
 from src.infrastructure.mongo import MongoRepository
 from src.infrastructure.mongo_assessment_store import MongoAssessmentStore
 from src.infrastructure.mongo_candidate_cv_provider import MongoCandidateCvProvider
@@ -61,6 +63,9 @@ async def lifespan(app: FastAPI):
             journal=journal,
             store=assessment_store,
             text_writer=PydanticAssessmentTextWriter(parse_model_specs(settings.interview_report_models)),
+        )
+        app.state.spec_draft_service = SpecDraftService(
+            PydanticSpecDrafter(parse_model_specs(settings.interview_spec_models))
         )
         async with legacy_runtime(app):
             yield

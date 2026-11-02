@@ -182,6 +182,7 @@ class Settings(BaseSettings):
     interview_hello_timeout_seconds: float = 10.0
     internal_service_token: str = Field(default="", validation_alias="INTERNAL_SERVICE_TOKEN")
     interview_report_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_REPORT_MODELS")
+    interview_spec_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_SPEC_MODELS")
     interview_evaluator_models: str = Field(default="openai:gpt-4o-mini", validation_alias="INTERVIEW_EVALUATOR_MODELS")
     interview_interviewer_models: str = Field(
         default="openai:gpt-4o-mini", validation_alias="INTERVIEW_INTERVIEWER_MODELS"
