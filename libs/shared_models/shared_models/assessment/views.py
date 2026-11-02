@@ -94,6 +94,15 @@ class FeedbackEditRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
 
+class ErasureRequest(BaseModel):
+    cv_correlation_id: UUID | None = None
+
+
+class ErasureResult(BaseModel):
+    attempt_id: UUID
+    deleted: dict[str, int]
+
+
 def build_overview(assessment: Assessment, template: AssessmentTemplateSnapshot) -> AssessmentOverview:
     focus_overviews: list[FocusOverview] = []
     for item in assessment.focus:

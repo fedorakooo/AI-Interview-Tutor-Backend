@@ -42,6 +42,8 @@ from shared_models.assessment.session_state import SessionState, fold_events
 from shared_models.assessment.verification import InconsistentAssessmentError, verify_assessment
 from shared_models.assessment.views import (
     AssessmentOverview,
+    ErasureRequest,
+    ErasureResult,
     FeedbackEditRequest,
     FeedbackView,
     FocusDetail,
@@ -56,6 +58,8 @@ from shared_models.assessment.views import (
 
 __all__ = [
     "AssessmentOverview",
+    "ErasureRequest",
+    "ErasureResult",
     "FeedbackEditRequest",
     "FeedbackView",
     "FocusDetail",
