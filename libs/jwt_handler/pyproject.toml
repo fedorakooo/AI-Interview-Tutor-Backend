@@ -6,7 +6,7 @@ authors = ["Aliaksandr Fedaraka <fedorakooo@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = ">=3.9"
-pyjwt = "2.10.1"
+pyjwt = {version = "2.10.1", extras = ["crypto"]}
 pydantic-settings = "2.10.1"
 pydantic = "^2.11.7"
 pyyaml = "^6.0.2"
