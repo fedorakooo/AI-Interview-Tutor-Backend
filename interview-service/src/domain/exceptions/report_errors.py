@@ -15,3 +15,7 @@ class FocusNotFoundError(ReportError):
 
 class SessionNotCompletedError(ReportError):
     """Raised when a report is built for an interview session that is not completed."""
+
+
+class InconsistentReportError(ReportError):
+    """Raised when a generated report contradicts the session journal or the template."""

@@ -6,14 +6,15 @@ from uuid import UUID
 from shared_models.assessment import (
     Assessment,
     AssessmentTemplateSnapshot,
+    InconsistentAssessmentError,
     SessionState,
     compute_focus_verdict,
-    fold_events,
     verify_assessment,
 )
 from shared_models.assessment.session_state import SessionStatus
 
-from src.domain.exceptions.report_errors import ReportNotReadyError
+from src.application.services.session_journal import fold_journal
+from src.domain.exceptions.report_errors import InconsistentReportError, ReportNotReadyError
 from src.domain.interfaces.assessment_repository import IAssessmentRepository
 from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
 from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
@@ -42,7 +43,7 @@ class AssessmentReportService:
         events = await self._event_repository.list_events(str(attempt_id))
         if not events:
             raise ReportNotReadyError()
-        state = fold_events(events)
+        state = fold_journal(events)
         if state.status != SessionStatus.COMPLETED:
             raise ReportNotReadyError()
 
@@ -66,7 +67,10 @@ class AssessmentReportService:
         except Exception:
             logger.exception("Writing report texts failed for session %s", state.session_id)
         assessment = build_assessment(attempt_id, template, events, texts, GENERATOR_VERSION, self._clock())
-        verify_assessment(assessment, template, events)
+        try:
+            verify_assessment(assessment, template, events)
+        except InconsistentAssessmentError as exc:
+            raise InconsistentReportError() from exc
         return assessment
 
     async def _with_reviews(self, attempt_id: UUID, assessment: Assessment) -> Assessment:

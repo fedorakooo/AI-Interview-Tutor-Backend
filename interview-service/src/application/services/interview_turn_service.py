@@ -13,7 +13,6 @@ from shared_models.assessment import (
     SessionCompleted,
     SessionEvent,
     SessionStarted,
-    fold_events,
 )
 from shared_models.assessment.session_events import MessageKind
 from shared_models.assessment.session_state import SessionState
@@ -21,8 +20,10 @@ from shared_models.cv.cv_data import CVData
 
 from src.application.dtos.message_delta import MessageDelta
 from src.application.dtos.session_output import SessionOutput
+from src.application.services.session_journal import fold_journal
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
+from src.domain.exceptions.session_errors import EmptyInterviewerMessageError
 from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
 from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
@@ -110,7 +111,7 @@ class InterviewTurnService:
     async def record_evidence(
         self, connection: InterviewConnection, events: list[SessionEvent], answer: CandidateMessage
     ) -> None:
-        state = fold_events(events)
+        state = fold_journal(events)
         question = next(
             (state.messages[seq] for seq in sorted(state.messages, reverse=True) if seq < answer.seq),
             None,
@@ -152,7 +153,7 @@ class InterviewTurnService:
                 await self._event_repository.append(event)
                 events.append(event)
 
-        state = fold_events(events)
+        state = fold_journal(events)
         touched = [focus.id] + [item.focus_id for item in items if item.focus_id != focus.id]
         for focus_id in dict.fromkeys(touched):
             if focus_id in covered_after:
@@ -177,7 +178,7 @@ class InterviewTurnService:
         self, connection: InterviewConnection, events: list[SessionEvent], turn_id: UUID
     ) -> AsyncIterator[SessionOutput]:
         template = connection.context.template
-        state = fold_events(events)
+        state = fold_journal(events)
         action = InterviewEngine(template).next_action(state, state.active_elapsed(self._clock()))
         cv = await self.load_cv(connection) if state.cv_attached else None
         request = self._interviewer_request(connection, state, action, cv)
@@ -231,7 +232,7 @@ class InterviewTurnService:
     def _fallback_text(request: InterviewerRequest) -> str:
         if request.custom_question is not None:
             return request.custom_question.text
-        raise ValueError("Interviewer returned an empty message")
+        raise EmptyInterviewerMessageError()
 
     @staticmethod
     def _interviewer_request(

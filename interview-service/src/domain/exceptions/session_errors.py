@@ -19,3 +19,11 @@ class NoPendingQuestionError(SessionError):
 
 class EventSeqConflictError(SessionError):
     """Raised when an event with the same sequence number is already in the session journal."""
+
+
+class InconsistentJournalError(SessionError):
+    """Raised when the session journal violates an ordering, reference or quote rule."""
+
+
+class EmptyInterviewerMessageError(SessionError):
+    """Raised when the interviewer model returns no text and there is no fallback question."""

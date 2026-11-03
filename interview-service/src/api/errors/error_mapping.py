@@ -12,9 +12,16 @@ from src.domain.exceptions.assessment_context_errors import (
 from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
 from src.domain.exceptions.feedback_errors import FeedbackDisabledError, FeedbackLeakError
 from src.domain.exceptions.interview_service_error import InterviewServiceError
-from src.domain.exceptions.report_errors import FocusNotFoundError, ReportNotReadyError, SessionNotCompletedError
+from src.domain.exceptions.report_errors import (
+    FocusNotFoundError,
+    InconsistentReportError,
+    ReportNotReadyError,
+    SessionNotCompletedError,
+)
 from src.domain.exceptions.session_errors import (
+    EmptyInterviewerMessageError,
     EventSeqConflictError,
+    InconsistentJournalError,
     NoPendingQuestionError,
     SessionBusyError,
     SessionCompletedError,
@@ -73,6 +80,13 @@ ERROR_MAPPING: dict[type[InterviewServiceError], ErrorSpec] = {
         status.HTTP_409_CONFLICT, "Session is busy", ErrorCode.SESSION_BUSY, retryable=True
     ),
     SessionCompletedError: ErrorSpec(status.HTTP_409_CONFLICT, "Interview is completed", ErrorCode.SESSION_COMPLETED),
+    InconsistentJournalError: ErrorSpec(
+        status.HTTP_500_INTERNAL_SERVER_ERROR, "Interview journal is inconsistent", ErrorCode.INTERNAL_ERROR
+    ),
+    InconsistentReportError: ErrorSpec(status.HTTP_500_INTERNAL_SERVER_ERROR, "Report is inconsistent"),
+    EmptyInterviewerMessageError: ErrorSpec(
+        status.HTTP_502_BAD_GATEWAY, "Interviewer returned no message", ErrorCode.INTERNAL_ERROR, retryable=True
+    ),
     NoPendingQuestionError: ErrorSpec(status.HTTP_409_CONFLICT, "No question is pending", ErrorCode.INVALID_MESSAGE),
 }
 

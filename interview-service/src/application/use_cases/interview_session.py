@@ -2,11 +2,12 @@ from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from shared_models.assessment import CandidateMessage, SessionEvent, SessionPaused, fold_events
+from shared_models.assessment import CandidateMessage, SessionEvent, SessionPaused
 from shared_models.assessment.session_events import PauseReason
 from shared_models.assessment.session_state import SessionStatus
 
 from src.application.dtos.session_output import SessionOutput
+from src.application.services.session_journal import fold_journal
 from src.application.services.interview_turn_service import InterviewTurnService
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionCompletedError
@@ -46,7 +47,7 @@ class OpenInterviewSessionUseCase:
             events = await self._event_repository.list_events(session_id)
             if not events:
                 events = [await self._turns.start_session(connection, session_id)]
-            state = fold_events(events)
+            state = fold_journal(events)
             if state.status == SessionStatus.COMPLETED:
                 await self._turns.publish_completion(connection, session_id)
                 return
@@ -83,7 +84,7 @@ class HandleCandidateAnswerUseCase:
             events = await self._event_repository.list_events(session_id)
             if not events:
                 raise NoPendingQuestionError()
-            state = fold_events(events)
+            state = fold_journal(events)
             if state.status == SessionStatus.COMPLETED:
                 raise SessionCompletedError()
 
@@ -132,7 +133,7 @@ class PauseInterviewSessionUseCase:
             return
         async with self._lock.hold(session_id):
             events = await self._event_repository.list_events(session_id)
-            if not events or fold_events(events).status != SessionStatus.IN_PROGRESS:
+            if not events or fold_journal(events).status != SessionStatus.IN_PROGRESS:
                 return
             await self._event_repository.append(
                 SessionPaused(

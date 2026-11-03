@@ -19,7 +19,12 @@ from shared_models.cv.cv_data import CVData
 from src.application.dtos.message_delta import MessageDelta
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
-from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
+from src.domain.exceptions.session_errors import (
+    EmptyInterviewerMessageError,
+    NoPendingQuestionError,
+    SessionBusyError,
+    SessionCompletedError,
+)
 from src.domain.interview.dto import EvaluationResult
 
 from tests.unit_tests.fakes import FIXED_NOW, FakeStack, ScriptedEvaluator
@@ -297,7 +302,7 @@ async def test_second_answer_to_the_same_question_is_rejected() -> None:
     harness.interviewer.empty = True
     harness.context.template.custom_questions.clear()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(EmptyInterviewerMessageError):
         await harness.answer("first answer")
     with pytest.raises(NoPendingQuestionError):
         await harness.answer("second answer")

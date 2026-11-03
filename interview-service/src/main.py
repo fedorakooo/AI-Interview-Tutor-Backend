@@ -1,3 +1,5 @@
+import logging
+
 import src.logger  # noqa: F401
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +11,9 @@ from src.api.v1.router import router
 from src.app.lifespan import lifespan
 from src.config import settings
 
-app =FastAPI(
+logger = logging.getLogger(__name__)
+
+app = FastAPI(
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     openapi_url="/openapi.json" if settings.debug else None,
@@ -40,14 +44,16 @@ async def readiness(request: Request) -> JSONResponse:
     checks: dict[str, str] = {}
     try:
         checks["redis"] = "ok" if await request.app.state.redis_client.ping() else "unavailable"
-    except Exception as exc:
-        checks["redis"] = str(exc)
+    except Exception:
+        logger.exception("Redis readiness check failed")
+        checks["redis"] = "unavailable"
 
     try:
         await request.app.state.mongo_client.admin.command("ping")
         checks["mongodb"] = "ok"
-    except Exception as exc:
-        checks["mongodb"] = str(exc)
+    except Exception:
+        logger.exception("MongoDB readiness check failed")
+        checks["mongodb"] = "unavailable"
 
     if all(value == "ok" for value in checks.values()):
         return JSONResponse(content={"status": "ready", "checks": checks})
