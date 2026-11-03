@@ -1,18 +1,18 @@
 class SessionError(Exception):
-    pass
+    """Base exception for interview session errors."""
 
 
 class SessionCompletedError(SessionError):
-    pass
+    """Raised when a candidate answer arrives after the interview session is completed."""
 
 
 class SessionBusyError(SessionError):
-    pass
+    """Raised when the exclusive turn lock of the session cannot be acquired in time."""
 
 
 class NoPendingQuestionError(SessionError):
-    pass
+    """Raised when a candidate answer arrives while the interviewer has no open question."""
 
 
 class EventSeqConflictError(SessionError):
-    pass
+    """Raised when an event with the same sequence number is already in the session journal."""

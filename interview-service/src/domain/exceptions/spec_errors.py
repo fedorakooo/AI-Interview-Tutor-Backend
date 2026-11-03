@@ -1,10 +1,10 @@
 class SpecDraftError(Exception):
-    pass
+    """Base exception for interview specification draft errors."""
 
 
 class EmptySpecDraftError(SpecDraftError):
-    pass
+    """Raised when the model draft has no usable focus areas or fails validation."""
 
 
 class SpecDraftGenerationError(SpecDraftError):
-    pass
+    """Raised when the model fails to generate a specification draft."""

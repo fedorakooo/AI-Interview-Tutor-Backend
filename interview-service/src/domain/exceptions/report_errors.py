@@ -1,10 +1,10 @@
 class ReportError(Exception):
-    pass
+    """Base exception for assessment report errors."""
 
 
 class ReportNotReadyError(ReportError):
-    pass
+    """Raised when a report is requested before the interview session is completed."""
 
 
 class FocusNotFoundError(ReportError):
-    pass
+    """Raised when the focus area does not exist in the interview template."""
