@@ -7,6 +7,7 @@ from shared_models.assessment import Assessment, AssessmentTemplateSnapshot, Fee
 
 from src.application.services.assessment_report_service import AssessmentReportService
 from src.domain.exceptions.feedback_errors import FeedbackDisabledError, FeedbackLeakError
+from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
 from src.domain.interfaces.feedback_repository import IFeedbackRepository
 from src.domain.interfaces.feedback_writer import IFeedbackWriter
 from src.domain.interview.feedback import build_digest, fallback_text, find_leaks
@@ -29,14 +30,20 @@ class GetCandidateFeedbackUseCase:
         report_service: AssessmentReportService,
         feedback_repository: IFeedbackRepository,
         feedback_writer: IFeedbackWriter,
+        context_client: IAssessmentContextClient,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
         self._reports = report_service
         self._feedback_repository = feedback_repository
         self._writer = feedback_writer
+        self._context_client = context_client
         self._clock = clock
 
-    async def __call__(self, attempt_id: UUID, template: AssessmentTemplateSnapshot) -> FeedbackView:
+    async def __call__(self, attempt_id: UUID) -> FeedbackView:
+        template = (await self._context_client.get_context(attempt_id)).template
+        return await self.for_template(attempt_id, template)
+
+    async def for_template(self, attempt_id: UUID, template: AssessmentTemplateSnapshot) -> FeedbackView:
         _require_enabled(template)
         assessment, _ = await self._reports.load(attempt_id, template)
         stored = await self._feedback_repository.latest(attempt_id)
@@ -65,17 +72,18 @@ class EditCandidateFeedbackUseCase:
         report_service: AssessmentReportService,
         feedback_repository: IFeedbackRepository,
         get_feedback: GetCandidateFeedbackUseCase,
+        context_client: IAssessmentContextClient,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ):
         self._reports = report_service
         self._feedback_repository = feedback_repository
         self._get_feedback = get_feedback
+        self._context_client = context_client
         self._clock = clock
 
-    async def __call__(
-        self, attempt_id: UUID, template: AssessmentTemplateSnapshot, editor_id: UUID, text: str
-    ) -> FeedbackView:
-        current = await self._get_feedback(attempt_id, template)
+    async def __call__(self, attempt_id: UUID, editor_id: UUID, text: str) -> FeedbackView:
+        template = (await self._context_client.get_context(attempt_id)).template
+        current = await self._get_feedback.for_template(attempt_id, template)
         assessment, _ = await self._reports.load(attempt_id, template)
         if find_leaks(text, template, _review_comments(assessment)):
             raise FeedbackLeakError()
@@ -88,5 +96,5 @@ class EditCandidateFeedbackUseCase:
             created_at=self._clock(),
         )
         if not await self._feedback_repository.append(feedback):
-            return await self._get_feedback(attempt_id, template)
+            return await self._get_feedback.for_template(attempt_id, template)
         return feedback

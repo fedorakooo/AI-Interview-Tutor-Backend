@@ -76,8 +76,8 @@ async def test_feedback_is_generated_once_and_cached() -> None:
     harness, template = harness_for()
     get_feedback = harness.container.get_candidate_feedback_use_case
 
-    first = await get_feedback(ATTEMPT_ID, template)
-    second = await get_feedback(ATTEMPT_ID, template)
+    first = await get_feedback(ATTEMPT_ID)
+    second = await get_feedback(ATTEMPT_ID)
 
     assert first == second and first.version == 1 and first.source == "generated"
     assert len(harness.writer.digests) == 1 and len(harness.store.versions) == 1
@@ -94,7 +94,7 @@ async def test_feedback_is_generated_once_and_cached() -> None:
 async def test_unsafe_or_failed_generation_falls_back_to_the_deterministic_text(writer) -> None:
     harness, template = harness_for(writer)
 
-    feedback = await harness.container.get_candidate_feedback_use_case(ATTEMPT_ID, template)
+    feedback = await harness.container.get_candidate_feedback_use_case(ATTEMPT_ID)
 
     assert "Python fundamentals" in feedback.text and not find_leaks(feedback.text, template, [])
 
@@ -105,10 +105,10 @@ async def test_feedback_requires_the_template_to_allow_it_and_a_finished_intervi
     disabled = template.model_copy(update={"candidate_feedback": False})
 
     with pytest.raises(FeedbackDisabledError):
-        await get_feedback(ATTEMPT_ID, disabled)
+        await harness_for(template=disabled)[0].container.get_candidate_feedback_use_case(ATTEMPT_ID)
     harness.journal.events.clear()
     with pytest.raises(ReportNotReadyError):
-        await get_feedback(ATTEMPT_ID, template)
+        await get_feedback(ATTEMPT_ID)
 
 
 async def test_edit_creates_a_new_version_and_rejects_internal_details() -> None:
@@ -116,13 +116,12 @@ async def test_edit_creates_a_new_version_and_rejects_internal_details() -> None
     editor = uuid4()
     await harness.container.add_focus_review_use_case(
         ATTEMPT_ID,
-        template,
         "async_io",
         ReviewRequest(author_id=editor, comment="Weak on loops", manual_verdict=Verdict.WEAK),
     )
     edit_feedback = harness.container.edit_candidate_feedback_use_case
 
-    edited = await edit_feedback(ATTEMPT_ID, template, editor, "  Thanks, great talk!  ")
+    edited = await edit_feedback(ATTEMPT_ID, editor, "  Thanks, great talk!  ")
 
     assert (edited.version, edited.source, edited.editor_id, edited.text) == (
         2,
@@ -133,7 +132,7 @@ async def test_edit_creates_a_new_version_and_rejects_internal_details() -> None
     assert (await harness.store.latest(ATTEMPT_ID)).version == 2
     for text in (f"Concern: {FLAG}", "As the reviewer wrote: weak on loops"):
         with pytest.raises(FeedbackLeakError):
-            await edit_feedback(ATTEMPT_ID, template, editor, text)
+            await edit_feedback(ATTEMPT_ID, editor, text)
     assert (await harness.store.latest(ATTEMPT_ID)).version == 2
 
 

@@ -1,6 +1,5 @@
 ALLOWED_VIOLATIONS: frozenset[str] = frozenset(
     {
-        "application/use_cases/assessment_template.py -> shared_models.assessment.AssessmentTemplateSnapshot",
         "application/dtos/session_output.py -> shared_models.assessment.InterviewerMessage",
         "application/dtos/session_output.py -> shared_models.assessment.SessionCompleted",
         "application/services/assessment_report_service.py -> shared_models.assessment.Assessment",

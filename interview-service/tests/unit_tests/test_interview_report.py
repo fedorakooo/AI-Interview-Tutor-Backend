@@ -113,8 +113,8 @@ class Harness:
 async def test_report_is_generated_once_and_cached() -> None:
     harness = Harness(texts())
 
-    first = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
-    second = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
+    first = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID)
+    second = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID)
 
     assert first == second
     assert len(harness.writer.digests) == 1
@@ -125,7 +125,7 @@ async def test_report_is_generated_once_and_cached() -> None:
 async def test_writer_failure_still_produces_a_report() -> None:
     harness = Harness()
 
-    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
+    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID)
 
     assert overview.red_flags == []
     assert len(overview.focus) == len(TEMPLATE.criteria)
@@ -137,16 +137,16 @@ async def test_report_is_not_available_before_the_interview_ends() -> None:
         if complete:
             harness.journal.events.clear()
         with pytest.raises(ReportNotReadyError):
-            await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
+            await harness.container.get_assessment_overview_use_case(ATTEMPT_ID)
 
 
 async def test_focus_detail_exposes_the_timeline_with_quotes() -> None:
-    detail = await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, TEMPLATE, "databases")
+    detail = await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, "databases")
 
     assert detail.reference_answer
     assert detail.timeline[0].evidence and detail.timeline[0].evidence.quotes
     with pytest.raises(FocusNotFoundError):
-        await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, TEMPLATE, "unknown")
+        await Harness(texts()).container.get_focus_detail_use_case(ATTEMPT_ID, "unknown")
 
 
 async def test_reviews_are_appended_and_override_the_final_verdict() -> None:
@@ -156,15 +156,14 @@ async def test_reviews_are_appended_and_override_the_final_verdict() -> None:
     reviewer = uuid4()
 
     await harness.container.add_focus_review_use_case(
-        ATTEMPT_ID, TEMPLATE, "async_io", ReviewRequest(author_id=reviewer, comment="Asked again, fine")
+        ATTEMPT_ID, "async_io", ReviewRequest(author_id=reviewer, comment="Asked again, fine")
     )
     detail = await harness.container.add_focus_review_use_case(
         ATTEMPT_ID,
-        TEMPLATE,
         "async_io",
         ReviewRequest(author_id=reviewer, comment="Overall adequate", manual_verdict=Verdict.ADEQUATE),
     )
-    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID, TEMPLATE)
+    overview = await harness.container.get_assessment_overview_use_case(ATTEMPT_ID)
 
     assert [entry.comment for entry in detail.focus.review] == ["Asked again, fine", "Overall adequate"]
     assert detail.focus.verdict == Verdict.WEAK and detail.focus.final_verdict == Verdict.ADEQUATE

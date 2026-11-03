@@ -16,7 +16,6 @@ from src.application.use_cases.assessment_reports import (
     GetAssessmentOverviewUseCase,
     GetFocusDetailUseCase,
 )
-from src.application.use_cases.assessment_template import GetAssessmentTemplateUseCase
 from src.application.use_cases.candidate_feedback import EditCandidateFeedbackUseCase, GetCandidateFeedbackUseCase
 from src.application.use_cases.data_erasure import EraseAttemptDataUseCase
 from src.application.use_cases.interview_session import (
@@ -78,7 +77,6 @@ class AppContainer:
     edit_candidate_feedback_use_case: EditCandidateFeedbackUseCase
     create_template_draft_use_case: CreateTemplateDraftUseCase
     erase_attempt_data_use_case: EraseAttemptDataUseCase
-    get_assessment_template_use_case: GetAssessmentTemplateUseCase
     completion_dispatcher: CompletionOutboxDispatcher
     completed_publisher: IAssessmentCompletedPublisher
     indexed_repositories: list[Any]
@@ -165,7 +163,9 @@ def build_container(
         clock,
     )
     report_service = AssessmentReportService(event_repository, assessment_repository, assessment_text_writer, clock)
-    get_feedback_use_case = GetCandidateFeedbackUseCase(report_service, feedback_repository, feedback_writer, clock)
+    get_feedback_use_case = GetCandidateFeedbackUseCase(
+        report_service, feedback_repository, feedback_writer, context_client, clock
+    )
 
     return AppContainer(
         open_interview_connection_use_case=OpenInterviewConnectionUseCase(attempt_token_verifier, context_client),
@@ -174,16 +174,15 @@ def build_container(
         open_interview_session_use_case=OpenInterviewSessionUseCase(lock, event_repository, turn_service),
         handle_candidate_answer_use_case=HandleCandidateAnswerUseCase(lock, event_repository, turn_service, clock),
         pause_interview_session_use_case=PauseInterviewSessionUseCase(lock, presence, event_repository, clock),
-        get_assessment_overview_use_case=GetAssessmentOverviewUseCase(report_service),
-        get_focus_detail_use_case=GetFocusDetailUseCase(report_service),
-        add_focus_review_use_case=AddFocusReviewUseCase(report_service, assessment_repository, clock),
+        get_assessment_overview_use_case=GetAssessmentOverviewUseCase(report_service, context_client),
+        get_focus_detail_use_case=GetFocusDetailUseCase(report_service, context_client),
+        add_focus_review_use_case=AddFocusReviewUseCase(report_service, assessment_repository, context_client, clock),
         get_candidate_feedback_use_case=get_feedback_use_case,
         edit_candidate_feedback_use_case=EditCandidateFeedbackUseCase(
-            report_service, feedback_repository, get_feedback_use_case, clock
+            report_service, feedback_repository, get_feedback_use_case, context_client, clock
         ),
         create_template_draft_use_case=CreateTemplateDraftUseCase(spec_drafter),
         erase_attempt_data_use_case=EraseAttemptDataUseCase(lock, attempt_data_repository),
-        get_assessment_template_use_case=GetAssessmentTemplateUseCase(context_client),
         completion_dispatcher=CompletionOutboxDispatcher(completion_outbox_repository, completed_publisher),
         completed_publisher=completed_publisher,
         indexed_repositories=[
