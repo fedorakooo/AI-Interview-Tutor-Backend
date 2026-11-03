@@ -1,9 +1,11 @@
 from uuid import uuid4
 
 import pytest
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, PyMongoError
+from redis.exceptions import RedisError
 from shared_models.assessment import CvPolicy
 from shared_models.assessment.mocks import mock_session_events
+from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.session_errors import EventSeqConflictError, SessionBusyError
 from src.infrastructure.mongo.repositories.candidate_cv_repository import CandidateCvRepository
 from src.infrastructure.mongo.repositories.interview_event_repository import InterviewEventRepository
@@ -340,3 +342,23 @@ def AssessmentCompleted_event():
         session_id="s",
         report_reference="interview-report:s",
     )
+
+
+class BrokenCollection:
+    async def insert_one(self, document: dict) -> None:
+        raise PyMongoError("down")
+
+
+class BrokenRedis:
+    async def set(self, *args, **kwargs) -> bool:
+        raise RedisError("down")
+
+
+async def test_backend_failures_become_a_dependency_error() -> None:
+    event = mock_session_events(CvPolicy.REQUIRED)[0]
+
+    with pytest.raises(DependencyUnavailableError):
+        await InterviewEventRepository(BrokenCollection()).append(event)
+    with pytest.raises(DependencyUnavailableError):
+        async with RedisSessionLock(BrokenRedis()).hold("session-1"):
+            pass

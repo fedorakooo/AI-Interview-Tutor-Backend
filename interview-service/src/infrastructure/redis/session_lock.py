@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from uuid import uuid4
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
+from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.session_errors import SessionBusyError
 from src.domain.interfaces.session_lock import ISessionLock
 
@@ -22,7 +24,7 @@ class RedisSessionLock(ISessionLock):
         token = uuid4().hex
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self._wait_seconds
-        while not await self._client.set(key, token, nx=True, px=self._ttl_ms):
+        while not await self._acquire(key, token):
             if loop.time() >= deadline:
                 raise SessionBusyError()
             await asyncio.sleep(0.05)
@@ -30,3 +32,9 @@ class RedisSessionLock(ISessionLock):
             yield
         finally:
             await self._client.eval(RELEASE_SCRIPT, 1, key, token)
+
+    async def _acquire(self, key: str, token: str) -> bool:
+        try:
+            return bool(await self._client.set(key, token, nx=True, px=self._ttl_ms))
+        except RedisError as exc:
+            raise DependencyUnavailableError() from exc

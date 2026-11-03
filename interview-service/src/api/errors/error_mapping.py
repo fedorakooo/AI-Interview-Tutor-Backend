@@ -10,6 +10,7 @@ from src.domain.exceptions.assessment_context_errors import (
     AssessmentNotReadyError,
 )
 from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
+from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.feedback_errors import FeedbackDisabledError, FeedbackLeakError
 from src.domain.exceptions.interview_service_error import InterviewServiceError
 from src.domain.exceptions.report_errors import (
@@ -80,6 +81,9 @@ ERROR_MAPPING: dict[type[InterviewServiceError], ErrorSpec] = {
         status.HTTP_409_CONFLICT, "Session is busy", ErrorCode.SESSION_BUSY, retryable=True
     ),
     SessionCompletedError: ErrorSpec(status.HTTP_409_CONFLICT, "Interview is completed", ErrorCode.SESSION_COMPLETED),
+    DependencyUnavailableError: ErrorSpec(
+        status.HTTP_503_SERVICE_UNAVAILABLE, "Service temporarily unavailable", ErrorCode.INTERNAL_ERROR, retryable=True
+    ),
     InconsistentJournalError: ErrorSpec(
         status.HTTP_500_INTERNAL_SERVER_ERROR, "Interview journal is inconsistent", ErrorCode.INTERNAL_ERROR
     ),
