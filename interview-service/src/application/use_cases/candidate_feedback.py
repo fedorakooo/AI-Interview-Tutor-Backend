@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
@@ -9,7 +10,8 @@ from src.domain.exceptions.feedback_errors import FeedbackDisabledError, Feedbac
 from src.domain.interfaces.feedback_repository import IFeedbackRepository
 from src.domain.interfaces.feedback_writer import IFeedbackWriter
 from src.domain.interview.feedback import build_digest, fallback_text, find_leaks
-from src.logger import app_logger
+
+logger = logging.getLogger(__name__)
 
 
 def _require_enabled(template: AssessmentTemplateSnapshot) -> None:
@@ -47,7 +49,7 @@ class GetCandidateFeedbackUseCase:
             if find_leaks(text, template, _review_comments(assessment)):
                 raise FeedbackLeakError()
         except Exception:
-            app_logger.exception("Writing candidate feedback failed for attempt %s", attempt_id)
+            logger.exception("Writing candidate feedback failed for attempt %s", attempt_id)
             text = fallback_text(digest)
 
         feedback = FeedbackView(

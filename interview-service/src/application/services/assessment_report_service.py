@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID
@@ -18,7 +19,8 @@ from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
 from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
 from src.domain.interview.report_builder import build_assessment
 from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts
-from src.logger import app_logger
+
+logger = logging.getLogger(__name__)
 
 GENERATOR_VERSION = "assessment-1"
 
@@ -62,7 +64,7 @@ class AssessmentReportService:
         try:
             texts = await self._text_writer.write(AssessmentDigest(template=template, state=state, verdicts=verdicts))
         except Exception:
-            app_logger.exception("Writing report texts failed for session %s", state.session_id)
+            logger.exception("Writing report texts failed for session %s", state.session_id)
         assessment = build_assessment(attempt_id, template, events, texts, GENERATOR_VERSION, self._clock())
         verify_assessment(assessment, template, events)
         return assessment

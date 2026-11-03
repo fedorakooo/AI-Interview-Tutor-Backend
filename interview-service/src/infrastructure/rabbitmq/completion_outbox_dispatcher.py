@@ -1,8 +1,10 @@
 import asyncio
+import logging
 
 from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
 from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
-from src.logger import app_logger
+
+logger = logging.getLogger(__name__)
 
 
 class CompletionOutboxDispatcher:
@@ -27,7 +29,7 @@ class CompletionOutboxDispatcher:
                 await self._outbox.mark_published(event.event_id)
                 published += 1
             except Exception:
-                app_logger.exception("Retrying AssessmentCompleted publication failed")
+                logger.exception("Retrying AssessmentCompleted publication failed")
         return published
 
     async def start(self) -> None:
@@ -48,5 +50,5 @@ class CompletionOutboxDispatcher:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                app_logger.exception("Completion outbox run failed")
+                logger.exception("Completion outbox run failed")
             await asyncio.sleep(self._interval_seconds)

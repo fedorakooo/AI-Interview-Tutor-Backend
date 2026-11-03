@@ -1,3 +1,4 @@
+import src.logger  # noqa: F401
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,7 +9,7 @@ from src.api.v1.router import router
 from src.app.lifespan import lifespan
 from src.config import settings
 
-app = FastAPI(
+app =FastAPI(
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     openapi_url="/openapi.json" if settings.debug else None,
