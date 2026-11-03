@@ -27,7 +27,8 @@ from src.api.v1.schemas.interview_protocol import (
     ServerTranscriptEntry,
 )
 from src.app.container import AppContainer
-from src.application.services.interview_turn_service import MessageDelta, SessionOutput
+from src.application.dtos.message_delta import MessageDelta
+from src.application.dtos.session_output import SessionOutput
 from src.config import settings
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.interview_service_error import InterviewServiceError

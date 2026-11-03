@@ -6,7 +6,8 @@ from shared_models.assessment import CandidateMessage, SessionEvent, SessionPaus
 from shared_models.assessment.session_events import PauseReason
 from shared_models.assessment.session_state import SessionStatus
 
-from src.application.services.interview_turn_service import InterviewTurnService, SessionOutput
+from src.application.dtos.session_output import SessionOutput
+from src.application.services.interview_turn_service import InterviewTurnService
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionCompletedError
 from src.domain.interfaces.interview_event_repository import IInterviewEventRepository

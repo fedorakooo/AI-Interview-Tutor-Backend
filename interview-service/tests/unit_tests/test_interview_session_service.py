@@ -16,7 +16,7 @@ from shared_models.assessment.mocks import mock_assessment_context
 from shared_models.assessment.session_events import CompletionReason, MessageKind
 from shared_models.assessment.session_state import SessionStatus
 from shared_models.cv.cv_data import CVData
-from src.application.services.interview_turn_service import MessageDelta
+from src.application.dtos.message_delta import MessageDelta
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
 from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError

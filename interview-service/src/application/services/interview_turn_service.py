@@ -1,6 +1,5 @@
 import logging
 from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID, uuid4, uuid5
 
@@ -20,6 +19,8 @@ from shared_models.assessment.session_events import MessageKind
 from shared_models.assessment.session_state import SessionState
 from shared_models.cv.cv_data import CVData
 
+from src.application.dtos.message_delta import MessageDelta
+from src.application.dtos.session_output import SessionOutput
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.assessment_context_errors import AssessmentNotReadyError
 from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
@@ -37,16 +38,6 @@ logger = logging.getLogger(__name__)
 COMPLETION_NAMESPACE = UUID("8d7b6c5e-3f2a-4e1b-a9c0-4b5d6e7f8a90")
 TRANSCRIPT_TAIL = 8
 CV_CACHE_SIZE = 256
-
-
-@dataclass(frozen=True)
-class MessageDelta:
-    turn_id: UUID
-    message_id: UUID
-    delta: str
-
-
-SessionOutput = MessageDelta | InterviewerMessage | SessionCompleted
 
 
 class InterviewTurnService:
