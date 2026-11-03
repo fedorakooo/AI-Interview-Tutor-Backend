@@ -51,7 +51,6 @@ from src.infrastructure.mongo.repositories.candidate_cv_repository import Candid
 from src.infrastructure.mongo.repositories.completion_outbox_repository import CompletionOutboxRepository
 from src.infrastructure.mongo.repositories.feedback_repository import FeedbackRepository
 from src.infrastructure.mongo.repositories.interview_event_repository import InterviewEventRepository
-from src.infrastructure.mongo.repository import MongoRepository
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
 from src.infrastructure.rabbitmq.completion_outbox_dispatcher import CompletionOutboxDispatcher
 from src.infrastructure.redis.session_lock import RedisSessionLock
@@ -128,13 +127,7 @@ def build_container(
         feedback=collection(mongo_settings.interview_feedback_collection_name),
         cv_documents=collection(mongo_settings.cv_analysis_collection_name),
     )
-    cv_repository = cv_repository or CandidateCvRepository(
-        MongoRepository(
-            client=mongo_client,
-            db_name=mongo_settings.db_name,
-            collection_name=mongo_settings.cv_analysis_collection_name,
-        )
-    )
+    cv_repository = cv_repository or CandidateCvRepository(collection(mongo_settings.cv_analysis_collection_name))
     lock = lock or RedisSessionLock(redis_client)
     presence = presence or RedisSessionPresence(redis_client)
     evaluator = evaluator or PydanticAnswerEvaluator(parse_model_specs(settings.interview_evaluator_models))

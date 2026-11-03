@@ -113,13 +113,13 @@ async def test_lock_is_released_when_the_body_fails() -> None:
     assert redis.values == {}
 
 
-class FakeMongoRepository:
+class FakeCvCollection:
     def __init__(self, document: dict | None) -> None:
         self.document = document
         self.queries: list[tuple] = []
 
-    async def find_latest_by_field(self, field_name: str, field_value: str, extra_filter: dict | None = None):
-        self.queries.append((field_name, field_value, extra_filter))
+    async def find_one(self, query: dict, sort: list | None = None):
+        self.queries.append((query, sort))
         return self.document
 
 
@@ -127,7 +127,7 @@ async def test_cv_provider_strips_metadata_and_looks_up_by_correlation_id() -> N
     from uuid import uuid4
 
     correlation_id = uuid4()
-    repository = FakeMongoRepository(
+    repository = FakeCvCollection(
         {
             "_id": "x",
             "correlation_id": str(correlation_id),
@@ -140,13 +140,15 @@ async def test_cv_provider_strips_metadata_and_looks_up_by_correlation_id() -> N
     cv = await CandidateCvRepository(repository).get(correlation_id)
 
     assert cv is not None and cv.specialization == "Backend"
-    assert repository.queries == [("correlation_id", str(correlation_id), {"status": "completed"})]
+    assert repository.queries == [
+        ({"correlation_id": str(correlation_id), "status": "completed"}, [("published_at", -1)])
+    ]
 
 
 async def test_cv_provider_returns_nothing_for_a_missing_document() -> None:
     from uuid import uuid4
 
-    assert await CandidateCvRepository(FakeMongoRepository(None)).get(uuid4()) is None
+    assert await CandidateCvRepository(FakeCvCollection(None)).get(uuid4()) is None
 
 
 class FakeDocumentCollection:

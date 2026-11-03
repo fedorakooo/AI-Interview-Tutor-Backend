@@ -1,10 +1,11 @@
 from uuid import UUID
 
+from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo import DESCENDING
 from shared_models.cv.cv_data import CVData
 from shared_models.messaging.common import AnalysisStatus
 
 from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
-from src.domain.interfaces.mongo import IMongoRepository
 
 CV_METADATA_FIELDS = {
     "_id",
@@ -20,14 +21,13 @@ CV_METADATA_FIELDS = {
 
 
 class CandidateCvRepository(ICandidateCvRepository):
-    def __init__(self, repository: IMongoRepository) -> None:
-        self._repository = repository
+    def __init__(self, collection: AsyncIOMotorCollection) -> None:
+        self._collection = collection
 
     async def get(self, correlation_id: UUID) -> CVData | None:
-        document = await self._repository.find_latest_by_field(
-            "correlation_id",
-            str(correlation_id),
-            extra_filter={"status": AnalysisStatus.COMPLETED.value},
+        document = await self._collection.find_one(
+            {"correlation_id": str(correlation_id), "status": AnalysisStatus.COMPLETED.value},
+            sort=[("published_at", DESCENDING)],
         )
         if document is None:
             return None
