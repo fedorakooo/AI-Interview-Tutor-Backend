@@ -1,4 +1,7 @@
-class AssessmentContextError(Exception):
+from src.domain.exceptions.interview_service_error import InterviewServiceError
+
+
+class AssessmentContextError(InterviewServiceError):
     """Base exception for errors while loading an assessment attempt context."""
 
 

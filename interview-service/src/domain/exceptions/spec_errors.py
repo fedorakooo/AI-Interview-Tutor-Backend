@@ -1,4 +1,7 @@
-class SpecDraftError(Exception):
+from src.domain.exceptions.interview_service_error import InterviewServiceError
+
+
+class SpecDraftError(InterviewServiceError):
     """Base exception for interview specification draft errors."""
 
 

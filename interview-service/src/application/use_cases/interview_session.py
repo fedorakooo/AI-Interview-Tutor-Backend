@@ -51,7 +51,15 @@ class OpenInterviewSessionUseCase:
                 return
             if InterviewEngine(connection.context.template).pending_question(state) is not None:
                 return
-            async for output in self._turns.advance(connection, events, uuid4()):
+            turn_id = uuid4()
+            last_message_seq = max(state.messages, default=None)
+            if last_message_seq is not None and state.messages[last_message_seq].role == "candidate":
+                answer = next(
+                    e for e in reversed(events) if isinstance(e, CandidateMessage) and e.seq == last_message_seq
+                )
+                await self._turns.record_evidence(connection, events, answer)
+                turn_id = answer.turn_id
+            async for output in self._turns.advance(connection, events, turn_id):
                 yield output
 
 

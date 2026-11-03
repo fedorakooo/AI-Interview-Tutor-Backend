@@ -6,6 +6,7 @@ from shared_models.assessment import (
     AssessmentContext,
     CandidateMessage,
     CvPolicy,
+    FocusCoverageChanged,
     InterviewerMessage,
     SessionCompleted,
     SessionPaused,
@@ -197,6 +198,90 @@ async def test_answer_stored_before_a_crash_is_continued() -> None:
 
     assert isinstance(outputs[-1], InterviewerMessage)
     assert len(harness.evaluator.requests) == 1
+
+
+def crash_on_first_coverage(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    append = harness.journal.append
+    crashed = False
+
+    async def crashing_append(event) -> None:
+        nonlocal crashed
+        if isinstance(event, FocusCoverageChanged) and not crashed:
+            crashed = True
+            raise RuntimeError("process crashed")
+        await append(event)
+
+    monkeypatch.setattr(harness.journal, "append", crashing_append)
+
+
+def coverage_events(harness: Harness) -> list[FocusCoverageChanged]:
+    return [e for e in harness.journal.events[harness.session_id] if isinstance(e, FocusCoverageChanged)]
+
+
+async def test_retry_after_a_crash_between_evidence_and_coverage_records_the_coverage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = Harness()
+    await harness.open()
+    crash_on_first_coverage(harness, monkeypatch)
+    turn_id = uuid4()
+    with pytest.raises(RuntimeError):
+        await harness.answer("an answer", turn_id)
+    assert len((await harness.state()).evidence) == 1
+    assert coverage_events(harness) == []
+
+    outputs = await harness.answer("an answer", turn_id)
+
+    state = await harness.state()
+    assert isinstance(outputs[-1], InterviewerMessage)
+    assert len(harness.evaluator.requests) == 1
+    assert len(state.evidence) == 1
+    assert [e.focus_id for e in coverage_events(harness)] == ["databases"]
+    assert state.coverage["databases"].evidence_count == 1
+
+
+async def test_reconnect_after_a_crash_between_evidence_and_coverage_recovers_the_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    harness = Harness()
+    await harness.open()
+    crash_on_first_coverage(harness, monkeypatch)
+    turn_id = uuid4()
+    with pytest.raises(RuntimeError):
+        await harness.answer("an answer", turn_id)
+
+    outputs = await harness.open()
+
+    state = await harness.state()
+    assert isinstance(outputs[-1], InterviewerMessage)
+    assert outputs[-1].turn_id == turn_id
+    assert len(harness.evaluator.requests) == 1
+    assert [e.focus_id for e in coverage_events(harness)] == ["databases"]
+    assert state.coverage["databases"].evidence_count == 1
+
+
+async def test_reconnect_after_a_crash_before_evidence_evaluates_the_stored_answer() -> None:
+    harness = Harness()
+    await harness.open()
+    turn_id = uuid4()
+    state = await harness.state()
+    await harness.journal.append(
+        CandidateMessage(
+            event_id=uuid4(),
+            session_id=harness.session_id,
+            seq=state.last_seq + 1,
+            occurred_at=FIXED_NOW,
+            turn_id=turn_id,
+            text="answer written before the crash",
+        )
+    )
+
+    outputs = await harness.open()
+
+    assert isinstance(outputs[-1], InterviewerMessage)
+    assert outputs[-1].turn_id == turn_id
+    assert len(harness.evaluator.requests) == 1
+    assert len((await harness.state()).evidence) == 1
 
 
 async def test_answer_before_the_session_starts_is_rejected() -> None:

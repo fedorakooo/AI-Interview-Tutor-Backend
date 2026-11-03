@@ -15,14 +15,11 @@ from shared_models.assessment import (
 from shared_models.assessment.session_events import SessionEvent
 from shared_models.assessment.session_state import SessionState, SessionStatus
 
+from src.domain.exceptions.report_errors import SessionNotCompletedError
 from src.domain.interview.report_dto import AssessmentTexts
 
 REPORT_NAMESPACE = UUID("5b1f0c9e-7a3d-4c2b-8e6f-0d9a1b2c3d4e")
 FALLBACK_SUMMARY = "Not enough evidence was collected to assess this focus area."
-
-
-class SessionNotCompletedError(Exception):
-    pass
 
 
 def build_assessment(

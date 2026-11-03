@@ -1,4 +1,7 @@
-class SessionError(Exception):
+from src.domain.exceptions.interview_service_error import InterviewServiceError
+
+
+class SessionError(InterviewServiceError):
     """Base exception for interview session errors."""
 
 

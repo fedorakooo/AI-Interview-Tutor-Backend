@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -30,7 +31,8 @@ from src.domain.interfaces.interviewer_agent import IInterviewerAgent
 from src.domain.interview.dto import EvaluationRequest, EvaluationResult, InterviewerRequest
 from src.domain.interview.engine import ASKING_KINDS, AskFocus, AskIntro, Complete, InterviewEngine, NextAction
 from src.domain.interview.evidence import build_evidence_items
-from src.logger import app_logger
+
+logger = logging.getLogger(__name__)
 
 COMPLETION_NAMESPACE = UUID("8d7b6c5e-3f2a-4e1b-a9c0-4b5d6e7f8a90")
 TRANSCRIPT_TAIL = 8
@@ -118,8 +120,6 @@ class InterviewTurnService:
         self, connection: InterviewConnection, events: list[SessionEvent], answer: CandidateMessage
     ) -> None:
         state = fold_events(events)
-        if any(item.answer_seq == answer.seq for item in state.evidence):
-            return
         question = next(
             (state.messages[seq] for seq in sorted(state.messages, reverse=True) if seq < answer.seq),
             None,
@@ -130,35 +130,45 @@ class InterviewTurnService:
         template = connection.context.template
         engine = InterviewEngine(template)
         focus = template.focus_by_id(question.focus_id or "")
-        try:
-            result = await self._evaluator.evaluate(
-                EvaluationRequest(
-                    template=template, target_focus=focus, question_text=question.text, answer_text=answer.text
+        items = [item for item in state.evidence if item.answer_seq == answer.seq]
+        covered_after = {
+            event.focus_id for event in events if isinstance(event, FocusCoverageChanged) and event.seq > answer.seq
+        }
+        topics: list[str] = []
+        if not items and focus.id not in covered_after:
+            try:
+                result = await self._evaluator.evaluate(
+                    EvaluationRequest(
+                        template=template, target_focus=focus, question_text=question.text, answer_text=answer.text
+                    )
                 )
-            )
-        except Exception:
-            app_logger.exception("Answer evaluation failed for session %s", answer.session_id)
-            result = EvaluationResult(answer_was_complete=False)
+            except Exception:
+                logger.exception("Answer evaluation failed for session %s", answer.session_id)
+                result = EvaluationResult(answer_was_complete=False)
 
-        items = build_evidence_items(
-            result.evidence, template, answer.session_id, question.seq, answer.seq, answer.text
-        )
-        for item in items:
-            event = EvidenceRecorded(
-                event_id=uuid4(),
-                session_id=answer.session_id,
-                seq=events[-1].seq + 1,
-                occurred_at=self._clock(),
-                evidence=item,
+            topics = result.covered_must_cover
+            items = build_evidence_items(
+                result.evidence, template, answer.session_id, question.seq, answer.seq, answer.text
             )
-            await self._event_repository.append(event)
-            events.append(event)
+            for item in items:
+                event = EvidenceRecorded(
+                    event_id=uuid4(),
+                    session_id=answer.session_id,
+                    seq=events[-1].seq + 1,
+                    occurred_at=self._clock(),
+                    evidence=item,
+                )
+                await self._event_repository.append(event)
+                events.append(event)
 
         state = fold_events(events)
         touched = [focus.id] + [item.focus_id for item in items if item.focus_id != focus.id]
-        for focus_id in touched:
-            topics = result.covered_must_cover if focus_id == focus.id else []
-            status, count, covered = engine.coverage_after_answer(state, focus_id, topics)
+        for focus_id in dict.fromkeys(touched):
+            if focus_id in covered_after:
+                continue
+            status, count, covered = engine.coverage_after_answer(
+                state, focus_id, topics if focus_id == focus.id else []
+            )
             event = FocusCoverageChanged(
                 event_id=uuid4(),
                 session_id=answer.session_id,
@@ -271,4 +281,4 @@ class InterviewTurnService:
             await self._completed_publisher.publish(event)
             await self._completion_outbox.mark_published(event.event_id)
         except Exception:
-            app_logger.exception("Publishing AssessmentCompleted failed for session %s", session_id)
+            logger.exception("Publishing AssessmentCompleted failed for session %s", session_id)

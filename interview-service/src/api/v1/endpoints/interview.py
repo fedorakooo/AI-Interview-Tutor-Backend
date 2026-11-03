@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -7,6 +8,7 @@ from pydantic import ValidationError
 from shared_models.assessment import CandidateMessage, InterviewerMessage, SessionCompleted, SessionEvent
 from shared_models.feature_flags.flags import feature_enabled
 
+from src.api.errors.error_mapping import ErrorSpec, resolve_error_spec
 from src.api.v1.schemas.interview_protocol import (
     PROTOCOL_VERSION,
     ClientCandidateMessage,
@@ -28,14 +30,9 @@ from src.app.container import AppContainer
 from src.application.services.interview_turn_service import MessageDelta, SessionOutput
 from src.config import settings
 from src.domain.entities.interview_connection import InterviewConnection
-from src.domain.exceptions.assessment_context_errors import (
-    AssessmentContextNotFoundError,
-    AssessmentContextUnavailableError,
-    AssessmentNotReadyError,
-)
-from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
-from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
-from src.logger import app_logger
+from src.domain.exceptions.interview_service_error import InterviewServiceError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/interview", tags=["Interview"])
 
@@ -78,22 +75,24 @@ async def _receive_hello(websocket: WebSocket) -> ClientHello | None:
     return message
 
 
+async def _send_error(websocket: WebSocket, exc: BaseException) -> ErrorSpec:
+    spec = resolve_error_spec(exc)
+    await _send(
+        websocket,
+        ServerError(code=spec.ws_code or ErrorCode.INTERNAL_ERROR, message=spec.detail, retryable=spec.retryable),
+    )
+    return spec
+
+
 async def _open_connection(
     websocket: WebSocket, hello: ClientHello, container: AppContainer
 ) -> InterviewConnection | None:
     try:
         return await container.open_interview_connection_use_case(hello.token)
-    except InvalidAttemptTokenError:
-        await _reject(websocket, ErrorCode.UNAUTHORIZED, "Invalid interview token", status.WS_1008_POLICY_VIOLATION)
-    except AssessmentNotReadyError:
-        await _reject(
-            websocket, ErrorCode.ASSESSMENT_NOT_READY, "Assessment is not ready", status.WS_1008_POLICY_VIOLATION
-        )
-    except (AssessmentContextNotFoundError, AssessmentContextUnavailableError):
-        await _reject(
-            websocket, ErrorCode.ASSESSMENT_UNAVAILABLE, "Assessment is unavailable", status.WS_1011_INTERNAL_ERROR
-        )
-    return None
+    except InterviewServiceError as exc:
+        spec = await _send_error(websocket, exc)
+        await websocket.close(code=spec.ws_close_code or status.WS_1011_INTERNAL_ERROR)
+        return None
 
 
 async def _replay(websocket: WebSocket, events: list[SessionEvent], last_event_id: UUID | None) -> None:
@@ -146,25 +145,13 @@ async def _stream(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -
 async def _stream_guarded(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -> bool:
     try:
         await _stream(websocket, outputs)
-    except SessionBusyError:
-        await _send(websocket, ServerError(code=ErrorCode.SESSION_BUSY, message="Session is busy", retryable=True))
-    except SessionCompletedError:
-        await _send(websocket, ServerError(code=ErrorCode.SESSION_COMPLETED, message="Interview is completed"))
-    except NoPendingQuestionError:
-        await _send(websocket, ServerError(code=ErrorCode.INVALID_MESSAGE, message="No question is pending"))
-    except AssessmentNotReadyError:
-        await _reject(
-            websocket, ErrorCode.ASSESSMENT_NOT_READY, "Assessment is not ready", status.WS_1008_POLICY_VIOLATION
-        )
-        return False
     except WebSocketDisconnect:
         raise
-    except Exception:
-        app_logger.exception("Interview turn failed")
-        await _send(
-            websocket,
-            ServerError(code=ErrorCode.INTERNAL_ERROR, message="The interview turn failed", retryable=True),
-        )
+    except Exception as exc:
+        spec = await _send_error(websocket, exc)
+        if spec.ws_close_code is not None:
+            await websocket.close(code=spec.ws_close_code)
+            return False
     return True
 
 
@@ -218,4 +205,4 @@ async def interview_ws(websocket: WebSocket) -> None:
             if presence_token is not None:
                 await container.pause_interview_session_use_case(connection, presence_token)
         except Exception:
-            app_logger.exception("Pausing the interview session failed")
+            logger.exception("Pausing the interview session failed")

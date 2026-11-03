@@ -16,8 +16,8 @@ from src.api.internal.router import router as internal_router
 from src.application.services.assessment_report_service import GENERATOR_VERSION
 from src.config import settings
 from src.domain.exceptions.assessment_context_errors import AssessmentContextNotFoundError, AssessmentNotReadyError
-from src.domain.exceptions.report_errors import FocusNotFoundError, ReportNotReadyError
-from src.domain.interview.report_builder import SessionNotCompletedError, build_assessment
+from src.domain.exceptions.report_errors import FocusNotFoundError, ReportNotReadyError, SessionNotCompletedError
+from src.domain.interview.report_builder import build_assessment
 from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts, FocusText, RedFlagDraft
 from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter, render_digest
 

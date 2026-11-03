@@ -1,4 +1,7 @@
-class FeedbackError(Exception):
+from src.domain.exceptions.interview_service_error import InterviewServiceError
+
+
+class FeedbackError(InterviewServiceError):
     """Base exception for candidate feedback errors."""
 
 
