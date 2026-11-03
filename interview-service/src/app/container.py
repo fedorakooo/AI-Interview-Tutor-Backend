@@ -9,6 +9,7 @@ from jwt_handler.interfaces import ICandidateInterviewTokenVerifier
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from redis.asyncio import Redis
 from src.application.services.assessment_report_service import AssessmentReportService
+from src.application.services.completion_outbox_dispatcher import CompletionOutboxDispatcher
 from src.application.services.interview_turn_service import InterviewTurnService
 from src.application.use_cases.assessment_reports import (
     AddFocusReviewUseCase,
@@ -57,7 +58,6 @@ from src.infrastructure.mongo.repositories.completion_outbox_repository import C
 from src.infrastructure.mongo.repositories.feedback_repository import FeedbackRepository
 from src.infrastructure.mongo.repositories.interview_event_repository import InterviewEventRepository
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
-from src.infrastructure.rabbitmq.completion_outbox_dispatcher import CompletionOutboxDispatcher
 from src.infrastructure.redis.session_lock import RedisSessionLock
 from src.infrastructure.redis.session_presence import RedisSessionPresence
 from src.infrastructure.user_management.assessment_context_client import UserManagementAssessmentContextClient

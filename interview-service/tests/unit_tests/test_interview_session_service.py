@@ -444,7 +444,7 @@ async def test_completion_is_stored_durably_before_publishing_and_survives_a_bro
 
 
 async def test_the_dispatcher_publishes_pending_completions_once_the_broker_recovers() -> None:
-    from src.infrastructure.rabbitmq.completion_outbox_dispatcher import CompletionOutboxDispatcher
+    from src.application.services.completion_outbox_dispatcher import CompletionOutboxDispatcher
 
     harness = Harness()
     harness.publisher.fail = True
