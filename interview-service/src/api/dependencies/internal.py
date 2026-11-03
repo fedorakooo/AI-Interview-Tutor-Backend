@@ -2,8 +2,8 @@ from uuid import UUID
 
 from shared_models.assessment import AssessmentTemplateSnapshot
 
-from src.app.container import AppContainer
+from src.api.dependencies.container import ApiContainer
 
 
-async def template_for_attempt(container: AppContainer, attempt_id: UUID) -> AssessmentTemplateSnapshot:
-    return (await container.assessment_context_client.get_context(attempt_id)).template
+async def template_for_attempt(container: ApiContainer, attempt_id: UUID) -> AssessmentTemplateSnapshot:
+    return await container.get_assessment_template_use_case(attempt_id)

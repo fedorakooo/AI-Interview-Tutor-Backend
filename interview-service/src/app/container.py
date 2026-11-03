@@ -11,6 +11,7 @@ from src.application.use_cases.assessment_reports import (
     GetAssessmentOverviewUseCase,
     GetFocusDetailUseCase,
 )
+from src.application.use_cases.assessment_template import GetAssessmentTemplateUseCase
 from src.application.use_cases.candidate_feedback import EditCandidateFeedbackUseCase, GetCandidateFeedbackUseCase
 from src.application.use_cases.data_erasure import EraseAttemptDataUseCase
 from src.application.use_cases.interview_session import (
@@ -73,7 +74,7 @@ class AppContainer:
     edit_candidate_feedback_use_case: EditCandidateFeedbackUseCase
     create_template_draft_use_case: CreateTemplateDraftUseCase
     erase_attempt_data_use_case: EraseAttemptDataUseCase
-    assessment_context_client: IAssessmentContextClient
+    get_assessment_template_use_case: GetAssessmentTemplateUseCase
     completion_dispatcher: CompletionOutboxDispatcher
     completed_publisher: IAssessmentCompletedPublisher
     indexed_repositories: list
@@ -178,7 +179,7 @@ def build_container(
         ),
         create_template_draft_use_case=CreateTemplateDraftUseCase(spec_drafter),
         erase_attempt_data_use_case=EraseAttemptDataUseCase(lock, attempt_data_repository),
-        assessment_context_client=context_client,
+        get_assessment_template_use_case=GetAssessmentTemplateUseCase(context_client),
         completion_dispatcher=CompletionOutboxDispatcher(completion_outbox_repository, completed_publisher),
         completed_publisher=completed_publisher,
         indexed_repositories=[

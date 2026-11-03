@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from shared_models.assessment import CandidateMessage, InterviewerMessage, SessionCompleted, SessionEvent
 from shared_models.feature_flags.flags import feature_enabled
 
+from src.api.dependencies.container import ApiContainer
 from src.api.errors.error_mapping import ErrorSpec, resolve_error_spec
 from src.api.v1.schemas.interview_protocol import (
     PROTOCOL_VERSION,
@@ -26,7 +27,6 @@ from src.api.v1.schemas.interview_protocol import (
     ServerSessionCompleted,
     ServerTranscriptEntry,
 )
-from src.app.container import AppContainer
 from src.application.dtos.message_delta import MessageDelta
 from src.application.dtos.session_output import SessionOutput
 from src.config import settings
@@ -86,7 +86,7 @@ async def _send_error(websocket: WebSocket, exc: BaseException) -> ErrorSpec:
 
 
 async def _open_connection(
-    websocket: WebSocket, hello: ClientHello, container: AppContainer
+    websocket: WebSocket, hello: ClientHello, container: ApiContainer
 ) -> InterviewConnection | None:
     try:
         return await container.open_interview_connection_use_case(hello.token)
@@ -162,7 +162,7 @@ async def interview_ws(websocket: WebSocket) -> None:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    container: AppContainer = websocket.app.state.container
+    container: ApiContainer = websocket.app.state.container
     await websocket.accept()
     hello = await _receive_hello(websocket)
     if hello is None:
