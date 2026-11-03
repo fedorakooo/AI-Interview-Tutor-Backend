@@ -3,12 +3,11 @@ from typing import Any
 
 
 class IMongoRepository(ABC):
-    """Interface defining the interface for interacting with MongoDB."""
+    """Generic port for document operations on one MongoDB collection."""
 
     @abstractmethod
     async def find_one(self, id: str) -> dict[str, Any] | None:
-        """Gets a document by id"""
-        pass
+        """Get a document by id."""
 
     @abstractmethod
     async def find_latest_by_field(
@@ -17,13 +16,11 @@ class IMongoRepository(ABC):
         field_value: str,
         extra_filter: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
-        """Gets the latest document matching a field value."""
-        pass
+        """Get the latest document matching a field value."""
 
     @abstractmethod
     async def find_one_by_field(self, field_name: str, field_value: str) -> dict[str, Any] | None:
-        """Gets a document by an arbitrary field value."""
-        pass
+        """Get a document by an arbitrary field value."""
 
     @abstractmethod
     async def find_many_by_field(
@@ -36,13 +33,11 @@ class IMongoRepository(ABC):
         sort_field: str = "started_at",
         sort_direction: int = -1,
     ) -> list[dict[str, Any]]:
-        """Gets documents matching a field value with pagination."""
-        pass
+        """Get documents matching a field value with pagination."""
 
     @abstractmethod
     async def insert_one(self, data: dict[str, Any]) -> str:
-        """Inserts document and returns inserted id"""
-        pass
+        """Insert a document and return its id."""
 
     @abstractmethod
     async def update_one(
@@ -50,8 +45,7 @@ class IMongoRepository(ABC):
         id: str,
         update_data: dict[str, Any],
     ) -> bool:
-        """Update document by ID"""
-        pass
+        """Update a document by id."""
 
     @abstractmethod
     async def update_one_by_field(
@@ -60,18 +54,16 @@ class IMongoRepository(ABC):
         field_value: str,
         update_data: dict[str, Any],
     ) -> bool:
-        """Update document by an arbitrary field value."""
-        pass
+        """Update a document by an arbitrary field value."""
 
     @abstractmethod
     async def delete_one(self, id: str) -> bool:
-        """Delete document by ID"""
-        pass
+        """Delete a document by id."""
 
     @abstractmethod
     async def __aenter__(self) -> "IMongoRepository":
-        pass
+        """Start a transaction."""
 
     @abstractmethod
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        """Commit the transaction, or abort it when the block raised."""

@@ -5,6 +5,8 @@ from shared_models.assessment import Assessment, ReviewEntry
 
 
 class IAssessmentRepository(ABC):
+    """Persistence port for assessment reports and reviewer entries."""
+
     @abstractmethod
     async def get(self, attempt_id: UUID) -> Assessment | None:
         """Return the stored report of an attempt without reviews."""

@@ -5,6 +5,8 @@ from shared_models.assessment import AssessmentCompleted
 
 
 class ICompletionOutboxRepository(ABC):
+    """Persistence port for the outbox of assessment completion events."""
+
     @abstractmethod
     async def enqueue(self, event: AssessmentCompleted) -> None:
         """Store a completion event durably, ignoring a repeat of the same event."""

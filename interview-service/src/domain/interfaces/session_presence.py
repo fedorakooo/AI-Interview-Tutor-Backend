@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 
 
 class ISessionPresence(ABC):
+    """Port for tracking the latest live connection of an interview session."""
+
     @abstractmethod
     async def claim(self, session_id: str) -> str:
         """Register a new live connection of a session and return its token."""

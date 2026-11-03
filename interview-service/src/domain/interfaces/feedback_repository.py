@@ -5,6 +5,8 @@ from shared_models.assessment import FeedbackView
 
 
 class IFeedbackRepository(ABC):
+    """Persistence port for versioned candidate feedback texts."""
+
     @abstractmethod
     async def latest(self, attempt_id: UUID) -> FeedbackView | None:
         """Return the newest stored feedback version of an attempt."""

@@ -4,6 +4,8 @@ from shared_models.assessment import SessionEvent
 
 
 class IInterviewEventRepository(ABC):
+    """Persistence port for the append-only interview session journal."""
+
     @abstractmethod
     async def append(self, event: SessionEvent) -> None:
         """Append an event to the session journal, rejecting a duplicate sequence number."""
