@@ -1,8 +1,8 @@
 import asyncio
 import logging
 
-from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
-from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
+from src.domain.interfaces.messaging.assessment_completed_publisher import IAssessmentCompletedPublisher
+from src.domain.interfaces.repositories.completion_outbox_repository import ICompletionOutboxRepository
 
 logger = logging.getLogger(__name__)
 

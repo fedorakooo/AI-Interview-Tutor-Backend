@@ -2,17 +2,20 @@ from uuid import UUID
 
 import httpx
 from pydantic import ValidationError
-from shared_models.assessment import AssessmentContext
+from shared_models.assessment import AssessmentContext as ContractAssessmentContext
 
 from src.domain.exceptions.assessment_context_errors import (
     AssessmentContextNotFoundError,
     AssessmentContextUnavailableError,
     AssessmentNotReadyError,
 )
-from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
+from src.domain.exceptions.invalid_value_errors import InvalidDomainValueError
+from src.domain.interfaces.clients.assessment_context_client import IAssessmentContextClient
+from src.domain.value_objects.assessment_context import AssessmentContext
+from src.infrastructure.mappers.assessment_context_mapper import AssessmentContextMapper
 
 
-class UserManagementAssessmentContextClient(IAssessmentContextClient):
+class AssessmentContextClient(IAssessmentContextClient):
     def __init__(self, client: httpx.AsyncClient, base_url: str, service_token: str) -> None:
         self._client = client
         self._base_url = base_url.rstrip("/")
@@ -32,6 +35,6 @@ class UserManagementAssessmentContextClient(IAssessmentContextClient):
         if response.status_code != httpx.codes.OK:
             raise AssessmentContextUnavailableError()
         try:
-            return AssessmentContext.model_validate_json(response.content)
-        except ValidationError as exc:
+            return AssessmentContextMapper.to_domain(ContractAssessmentContext.model_validate_json(response.content))
+        except (ValidationError, InvalidDomainValueError) as exc:
             raise AssessmentContextUnavailableError() from exc

@@ -3,9 +3,10 @@ import asyncio
 import aio_pika
 from aio_pika import DeliveryMode, Message
 from aio_pika.abc import AbstractChannel, AbstractRobustConnection
-from shared_models.assessment import AssessmentCompleted
 
-from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
+from src.domain.events.assessment_completed import AssessmentCompleted
+from src.domain.interfaces.messaging.assessment_completed_publisher import IAssessmentCompletedPublisher
+from src.infrastructure.mappers.assessment_completed_mapper import AssessmentCompletedMapper
 
 
 class AssessmentCompletedPublisher(IAssessmentCompletedPublisher):
@@ -19,7 +20,10 @@ class AssessmentCompletedPublisher(IAssessmentCompletedPublisher):
     async def publish(self, event: AssessmentCompleted) -> None:
         channel = await self._get_channel()
         await channel.default_exchange.publish(
-            Message(body=event.model_dump_json().encode(), delivery_mode=DeliveryMode.PERSISTENT),
+            Message(
+                body=AssessmentCompletedMapper.to_contract(event).model_dump_json().encode(),
+                delivery_mode=DeliveryMode.PERSISTENT,
+            ),
             routing_key=self._queue_name,
         )
 

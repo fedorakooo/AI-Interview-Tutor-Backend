@@ -1,79 +1,54 @@
-import logging
 from collections.abc import Callable
-from datetime import UTC, datetime
-from uuid import UUID
+from datetime import datetime
+from uuid import UUID, uuid4
 
-from shared_models.assessment import (
-    Assessment,
-    AssessmentTemplateSnapshot,
-    InconsistentAssessmentError,
-    SessionState,
-    compute_focus_verdict,
-    verify_assessment,
-)
-from shared_models.assessment.session_state import SessionStatus
+from shared_models.assessment import AssessmentOverview, FocusDetail, ReviewRequest
 
-from src.application.services.session_journal import fold_journal
-from src.domain.exceptions.report_errors import InconsistentReportError, ReportNotReadyError
-from src.domain.interfaces.assessment_repository import IAssessmentRepository
-from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
-from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
-from src.domain.interview.report_builder import build_assessment
-from src.domain.interview.report_dto import AssessmentDigest, AssessmentTexts
-
-logger = logging.getLogger(__name__)
-
-GENERATOR_VERSION = "assessment-1"
+from src.application.interfaces.assessment_report_service import IAssessmentReportService
+from src.application.mappers.report_view_mapper import ReportViewMapper
+from src.application.mappers.review_mapper import ReviewMapper
+from src.application.services.report_loader import ReportLoader
+from src.domain.exceptions.report_errors import FocusNotFoundError
+from src.domain.interfaces.clients.assessment_context_client import IAssessmentContextClient
+from src.domain.interfaces.repositories.assessment_repository import IAssessmentRepository
+from src.domain.value_objects.interview_template import InterviewTemplate
 
 
-class AssessmentReportService:
+class AssessmentReportService(IAssessmentReportService):
     def __init__(
         self,
-        event_repository: IInterviewEventRepository,
+        report_loader: ReportLoader,
         assessment_repository: IAssessmentRepository,
-        text_writer: IAssessmentTextWriter,
-        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        context_client: IAssessmentContextClient,
+        clock: Callable[[], datetime],
     ) -> None:
-        self._event_repository = event_repository
+        self._report_loader = report_loader
         self._assessment_repository = assessment_repository
-        self._text_writer = text_writer
+        self._context_client = context_client
         self._clock = clock
 
-    async def load(self, attempt_id: UUID, template: AssessmentTemplateSnapshot) -> tuple[Assessment, SessionState]:
-        events = await self._event_repository.list_events(str(attempt_id))
-        if not events:
-            raise ReportNotReadyError()
-        state = fold_journal(events)
-        if state.status != SessionStatus.COMPLETED:
-            raise ReportNotReadyError()
+    async def get_overview(self, attempt_id: UUID) -> AssessmentOverview:
+        template = (await self._context_client.get_context(attempt_id)).template
+        assessment, _ = await self._report_loader.load(attempt_id, template)
+        return ReportViewMapper.overview(assessment, template)
 
-        assessment = await self._assessment_repository.get(attempt_id)
-        if assessment is None:
-            assessment = await self._generate(attempt_id, template, events, state)
-            await self._assessment_repository.save(assessment)
-            assessment = await self._assessment_repository.get(attempt_id) or assessment
-        return await self._with_reviews(attempt_id, assessment), state
+    async def get_focus_detail(self, attempt_id: UUID, focus_id: str) -> FocusDetail:
+        template = (await self._context_client.get_context(attempt_id)).template
+        assessment, state = await self._report_loader.load(attempt_id, template)
+        self._require_focus(template, focus_id)
+        return ReportViewMapper.focus_detail(assessment, template, state, focus_id)
 
-    async def _generate(
-        self, attempt_id: UUID, template: AssessmentTemplateSnapshot, events: list, state: SessionState
-    ) -> Assessment:
-        verdicts = {
-            focus.id: compute_focus_verdict(focus, [item for item in state.evidence if item.focus_id == focus.id])
-            for focus in template.criteria
-        }
-        texts: AssessmentTexts | None = None
-        try:
-            texts = await self._text_writer.write(AssessmentDigest(template=template, state=state, verdicts=verdicts))
-        except Exception:
-            logger.exception("Writing report texts failed for session %s", state.session_id)
-        assessment = build_assessment(attempt_id, template, events, texts, GENERATOR_VERSION, self._clock())
-        try:
-            verify_assessment(assessment, template, events)
-        except InconsistentAssessmentError as exc:
-            raise InconsistentReportError() from exc
-        return assessment
+    async def add_review(self, attempt_id: UUID, focus_id: str, request: ReviewRequest) -> FocusDetail:
+        template = (await self._context_client.get_context(attempt_id)).template
+        await self._report_loader.load(attempt_id, template)
+        self._require_focus(template, focus_id)
+        await self._assessment_repository.add_review(
+            attempt_id, focus_id, ReviewMapper.to_entry(request, uuid4(), self._clock())
+        )
+        assessment, state = await self._report_loader.load(attempt_id, template)
+        return ReportViewMapper.focus_detail(assessment, template, state, focus_id)
 
-    async def _with_reviews(self, attempt_id: UUID, assessment: Assessment) -> Assessment:
-        reviews = await self._assessment_repository.list_reviews(attempt_id)
-        focus = [item.model_copy(update={"review": reviews.get(item.focus_id, [])}) for item in assessment.focus]
-        return assessment.model_copy(update={"focus": focus})
+    @staticmethod
+    def _require_focus(template: InterviewTemplate, focus_id: str) -> None:
+        if focus_id not in {focus.id for focus in template.criteria}:
+            raise FocusNotFoundError()

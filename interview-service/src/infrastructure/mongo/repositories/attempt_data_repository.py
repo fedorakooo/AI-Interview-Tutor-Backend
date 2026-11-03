@@ -2,7 +2,7 @@ from uuid import UUID
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
-from src.domain.interfaces.attempt_data_repository import IAttemptDataRepository
+from src.domain.interfaces.repositories.attempt_data_repository import IAttemptDataRepository
 
 
 class AttemptDataRepository(IAttemptDataRepository):

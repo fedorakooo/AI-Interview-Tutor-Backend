@@ -15,9 +15,9 @@ router = APIRouter(
 
 @router.get("/{attempt_id}", response_model=FeedbackView)
 async def get_feedback(attempt_id: UUID, container: ContainerDep) -> FeedbackView:
-    return await container.get_candidate_feedback_use_case(attempt_id)
+    return await container.candidate_feedback_service.get(attempt_id)
 
 
 @router.put("/{attempt_id}", response_model=FeedbackView)
 async def edit_feedback(attempt_id: UUID, body: FeedbackEditRequest, container: ContainerDep) -> FeedbackView:
-    return await container.edit_candidate_feedback_use_case(attempt_id, body.editor_id, body.text)
+    return await container.candidate_feedback_service.edit(attempt_id, body.editor_id, body.text)

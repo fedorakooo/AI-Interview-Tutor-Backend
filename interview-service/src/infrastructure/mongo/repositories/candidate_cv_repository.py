@@ -5,7 +5,9 @@ from pymongo import DESCENDING
 from shared_models.cv.cv_data import CVData
 from shared_models.messaging.common import AnalysisStatus
 
-from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
+from src.domain.interfaces.repositories.candidate_cv_repository import ICandidateCvRepository
+from src.domain.value_objects.candidate_cv import CandidateCv
+from src.infrastructure.mappers.candidate_cv_mapper import CandidateCvMapper
 
 CV_METADATA_FIELDS = {
     "_id",
@@ -24,7 +26,7 @@ class CandidateCvRepository(ICandidateCvRepository):
     def __init__(self, collection: AsyncIOMotorCollection) -> None:
         self._collection = collection
 
-    async def get(self, correlation_id: UUID) -> CVData | None:
+    async def get(self, correlation_id: UUID) -> CandidateCv | None:
         document = await self._collection.find_one(
             {"correlation_id": str(correlation_id), "status": AnalysisStatus.COMPLETED.value},
             sort=[("published_at", DESCENDING)],
@@ -32,4 +34,4 @@ class CandidateCvRepository(ICandidateCvRepository):
         if document is None:
             return None
         payload = {key: value for key, value in document.items() if key not in CV_METADATA_FIELDS}
-        return CVData.model_validate(payload)
+        return CandidateCvMapper.to_domain(CVData.model_validate(payload))

@@ -15,4 +15,4 @@ router = APIRouter(
 
 @router.post("/{attempt_id}", response_model=ErasureResult)
 async def erase_attempt_data(attempt_id: UUID, body: ErasureRequest, container: ContainerDep) -> ErasureResult:
-    return await container.erase_attempt_data_use_case(attempt_id, body.cv_correlation_id)
+    return await container.data_erasure_service.erase(attempt_id, body.cv_correlation_id)

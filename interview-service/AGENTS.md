@@ -67,9 +67,10 @@ Top-level modules `src/config.py`, `src/logger.py` and `src/main.py` stay where 
 | DTO | `application/dtos/` | Stream outputs such as `MessageDelta`, `SessionOutput` |
 | Mapper | `application/mappers/` | Domain to contract views, draft to template, assessment to feedback digest |
 | Repository | `infrastructure/mongo/repositories/` | Maps documents to domain objects |
-| Index creation | `app/container.py` | Repositories with `ensure_indexes` are listed explicitly in the container and indexed in the lifespan |
-| Adapter | `infrastructure/{redis,rabbitmq,user_management}/` | Maps contract types to domain types and back |
-| LLM agent | `agents/<role>/` | `agent.py`, `prompts.py`, `schemas.py`, `mapper.py` |
+| Index creation | `app/container.py` | The container lists the four Mongo repositories and keeps those that satisfy the `IndexedRepository` protocol (`infrastructure/mongo/indexed_repository.py`); the lifespan calls `ensure_indexes` on them |
+| Adapter | `infrastructure/{redis,rabbitmq,user_management,jwt}/` | Implements a port; uses the mappers for contract types |
+| Infrastructure mapper | `infrastructure/mappers/` | Contract and document types to domain types and back, one class per aggregate; `AssessmentCompleted` has one mapper shared by the publisher and the outbox repository |
+| LLM agent | `agents/<role>/` | `agent.py` and `prompts.py`; `schemas.py` (pydantic output schema) and `mapper.py` (schema to domain) only when the agent returns structured output |
 | API schema | `api/v1/schemas/` | WebSocket protocol and HTTP bodies |
 | Error mapping | `api/errors/error_mapping.py` | One table for HTTP and WebSocket |
 
@@ -123,12 +124,9 @@ Top-level modules `src/config.py`, `src/logger.py` and `src/main.py` stay where 
 
 | Deviation | Reason or plan |
 |---|---|
-| `domain` and `application` still import `shared_models` (session journal, assessment model, template, context, CV, `AssessmentCompleted`, `FeedbackView`) and `domain/interview/` still holds pydantic DTOs | Migrate to frozen dataclasses and domain types, with mapping in `infrastructure` and `application/mappers/`, until the allowlist for these layers is empty |
-| `application/interfaces` and `application/mappers` do not exist yet; `application/use_cases/` and `InterviewTurnService` (282 lines, 7 public methods) are not yet split into area services; `agents/` does not exist (LLM agents live in `infrastructure/ai/` and import `pydantic_ai`); `domain/interfaces/` is flat | Migrate step by step, one small commit each, tests after each |
-| `shared_models` is used outside this service more widely than `Verdict`: `user-management-service/tests/unit_tests/test_interview_report_client.py` uses `build_overview`, `build_focus_detail`, `fold_events` and `mocks`, and `libs/shared_models/tests/` uses `mocks` | `Verdict` stays a contract enum. `build_overview` and `build_focus_detail` live in `views.py` and move to `application/mappers/` together with the model; update the user-management test first |
+| `libs/shared_models` still holds the old session and assessment model (`session_events`, `session_state`, `report`, `scoring`, `verification`, `mocks`) and `build_overview` / `build_focus_detail` in `views.py`; `interview-service` no longer imports them outside `infrastructure` (persistence format) and tests (`mocks`), but `user-management-service/tests/unit_tests/test_interview_report_client.py` uses `build_overview`, `build_focus_detail`, `fold_events` and `mocks`, and `libs/shared_models/tests/` uses `mocks` | Move the test data of those consumers to static fixtures, then delete the unused model from `shared_models`; `Verdict` stays a contract enum. The view-building logic now exists twice (`application/mappers/report_view_mapper.py` and `views.py`) until then |
 | No Unit of Work, unlike the default | Append-only journal with unique `(session_id, seq)` and a Redis lock; revisit if two repositories need an atomic write and Mongo transactions are available |
-| `record_evidence` appends events one by one, so it is not atomic: the `covered_must_cover` topics of an interrupted evaluation are lost, and a crash in the middle of several `EvidenceRecorded` events drops the remaining ones. Lost topics show up as false `missed_must_cover` in the report (`report_builder.py`) and in the growth topics of the candidate feedback (`feedback.py`) | Persist the topics in the evidence event or use a Mongo transaction (check the replica set first) |
-| `advance()` is not atomic either: a crash between `InterviewerMessage(CLOSING)` and `SessionCompleted` repeats the turn without completing the session, and a reconnect writes a second closing message | Same fix as above: one atomic append of the closing message and the completion event |
-| `indexed_repositories` in `app/container.py` selects repositories with `hasattr` | Replace with an explicit list of repositories that have `ensure_indexes` |
-| Observability not wired | Separate task; `agents/` (once it exists) is the place for GenAI instrumentation |
+| `record_evidence` appends events one by one, so it is not atomic: the `covered_must_cover` topics of an interrupted evaluation are lost, and a crash in the middle of several `EvidenceRecorded` events drops the remaining ones. Lost topics show up as false `missed_must_cover` in the report (`assessment_builder.py`) and in the growth topics of the candidate feedback (`feedback_digest_builder.py`) | Persist the topics in the evidence event or use a Mongo transaction (check the replica set first) |
+| `InterviewerTurn.run` is not atomic either: a crash between `InterviewerMessage(CLOSING)` and `SessionCompleted` repeats the turn without completing the session, and a reconnect writes a second closing message | Same fix as above: one atomic append of the closing message and the completion event |
+| Observability not wired | Separate task; `agents/` is the place for GenAI instrumentation |
 | Mongo replica-set status unknown | Check before any transaction-based change |

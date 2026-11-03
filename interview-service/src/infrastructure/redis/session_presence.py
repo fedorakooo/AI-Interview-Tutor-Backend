@@ -1,12 +1,12 @@
 from uuid import uuid4
 
 from redis.asyncio import Redis
-from src.domain.interfaces.session_presence import ISessionPresence
+from src.domain.interfaces.session.session_presence import ISessionPresence
 
 RELEASE_SCRIPT = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 
 
-class RedisSessionPresence(ISessionPresence):
+class SessionPresence(ISessionPresence):
     def __init__(self, client: Redis, ttl_seconds: int = 6 * 3600) -> None:
         self._client = client
         self._ttl_seconds = ttl_seconds

@@ -1,11 +1,12 @@
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError, PyMongoError
-from shared_models.assessment import SessionEvent, SessionEventAdapter
 
+from src.domain.events.session_event import SessionEvent
 from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.session_errors import EventSeqConflictError
-from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
+from src.domain.interfaces.repositories.interview_event_repository import IInterviewEventRepository
+from src.infrastructure.mappers.session_event_mapper import SessionEventMapper
 
 
 class InterviewEventRepository(IInterviewEventRepository):
@@ -17,7 +18,7 @@ class InterviewEventRepository(IInterviewEventRepository):
         await self._collection.create_index("event_id", unique=True)
 
     async def append(self, event: SessionEvent) -> None:
-        document = event.model_dump(mode="json")
+        document = SessionEventMapper.to_document(event)
         document["created_at"] = event.occurred_at
         try:
             await self._collection.insert_one(document)
@@ -32,4 +33,4 @@ class InterviewEventRepository(IInterviewEventRepository):
             documents = await cursor.to_list(length=None)
         except PyMongoError as exc:
             raise DependencyUnavailableError() from exc
-        return [SessionEventAdapter.validate_python(document) for document in documents]
+        return [SessionEventMapper.from_document(document) for document in documents]

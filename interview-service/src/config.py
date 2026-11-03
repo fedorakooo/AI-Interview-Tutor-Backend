@@ -75,13 +75,10 @@ class AppSettings(BaseSettings):
 
 
 class LoggerSettings(BaseSettings):
-    """Logging configuration settings."""
-
     logging_config: dict[str, Any] = {}
 
     @classmethod
     def load_from_yaml(cls, file_path: str = "config.yaml") -> dict[str, Any]:
-        """Load logging configuration from YAML file."""
         path = Path(file_path)
         if not path.exists():
             return {}

@@ -33,10 +33,11 @@ ALLOWED_TOP_LEVEL_IMPORTS: dict[str, set[str]] = {
 DRIVERS = {"motor", "pymongo", "bson", "redis", "aio_pika", "aiormq", "httpx"}
 WEB = {"fastapi", "starlette", "uvicorn"}
 AI = {"pydantic_ai"}
+INTERNAL_LIBS = {"jwt_handler"}
 FORBIDDEN_THIRD_PARTY: dict[str, set[str]] = {
-    "application": DRIVERS | WEB | AI,
+    "application": DRIVERS | WEB | AI | INTERNAL_LIBS,
     "infrastructure": WEB | AI,
-    "api": DRIVERS | AI,
+    "api": DRIVERS | AI | INTERNAL_LIBS,
 }
 ALLOWED_THIRD_PARTY: dict[str, set[str]] = {
     "domain": set(),

@@ -3,9 +3,14 @@ from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError
-from shared_models.assessment import Assessment, ReviewEntry
+from shared_models.assessment import Assessment as ContractAssessment
+from shared_models.assessment import ReviewEntry as ContractReviewEntry
 
-from src.domain.interfaces.assessment_repository import IAssessmentRepository
+from src.domain.entities.assessment import Assessment
+from src.domain.entities.review_entry import ReviewEntry
+from src.domain.interfaces.repositories.assessment_repository import IAssessmentRepository
+from src.infrastructure.mappers.assessment_mapper import AssessmentMapper
+from src.infrastructure.mappers.review_entry_mapper import ReviewEntryMapper
 
 
 class AssessmentRepository(IAssessmentRepository):
@@ -20,18 +25,20 @@ class AssessmentRepository(IAssessmentRepository):
 
     async def get(self, attempt_id: UUID) -> Assessment | None:
         document = await self._assessments.find_one({"attempt_id": str(attempt_id)}, {"_id": 0})
-        return Assessment.model_validate(document) if document else None
+        return AssessmentMapper.to_domain(ContractAssessment.model_validate(document)) if document else None
 
     async def save(self, assessment: Assessment) -> None:
         try:
             await self._assessments.insert_one(
-                assessment.model_dump(mode="json", exclude={"focus": {"__all__": {"review"}}})
+                AssessmentMapper.to_contract(assessment).model_dump(
+                    mode="json", exclude={"focus": {"__all__": {"review"}}}
+                )
             )
         except DuplicateKeyError:
             return
 
     async def add_review(self, attempt_id: UUID, focus_id: str, entry: ReviewEntry) -> None:
-        document = entry.model_dump(mode="json")
+        document = ReviewEntryMapper.to_contract(entry).model_dump(mode="json")
         document.update({"attempt_id": str(attempt_id), "focus_id": focus_id, "created_at": entry.created_at})
         await self._reviews.insert_one(document)
 
@@ -39,5 +46,7 @@ class AssessmentRepository(IAssessmentRepository):
         cursor = self._reviews.find({"attempt_id": str(attempt_id)}, {"_id": 0}).sort("created_at", ASCENDING)
         grouped: dict[str, list[ReviewEntry]] = {}
         for document in await cursor.to_list(length=None):
-            grouped.setdefault(document["focus_id"], []).append(ReviewEntry.model_validate(document))
+            grouped.setdefault(document["focus_id"], []).append(
+                ReviewEntryMapper.to_domain(ContractReviewEntry.model_validate(document))
+            )
         return grouped

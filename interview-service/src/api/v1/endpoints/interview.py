@@ -5,7 +5,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
-from shared_models.assessment import CandidateMessage, InterviewerMessage, SessionCompleted, SessionEvent
 from shared_models.feature_flags.flags import feature_enabled
 
 from src.api.dependencies.container import ApiContainer
@@ -27,8 +26,11 @@ from src.api.v1.schemas.interview_protocol import (
     ServerSessionCompleted,
     ServerTranscriptEntry,
 )
+from src.application.dtos.message_completed import MessageCompleted
 from src.application.dtos.message_delta import MessageDelta
+from src.application.dtos.session_finished import SessionFinished
 from src.application.dtos.session_output import SessionOutput
+from src.application.dtos.transcript_entry import TranscriptEntry
 from src.config import settings
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.exceptions.interview_service_error import InterviewServiceError
@@ -89,30 +91,28 @@ async def _open_connection(
     websocket: WebSocket, hello: ClientHello, container: ApiContainer
 ) -> InterviewConnection | None:
     try:
-        return await container.open_interview_connection_use_case(hello.token)
+        return await container.interview_session_service.open_connection(hello.token)
     except InterviewServiceError as exc:
         spec = await _send_error(websocket, exc)
         await websocket.close(code=spec.ws_close_code or status.WS_1011_INTERNAL_ERROR)
         return None
 
 
-async def _replay(websocket: WebSocket, events: list[SessionEvent], last_event_id: UUID | None) -> None:
-    known = {event.event_id for event in events}
-    skipping = last_event_id is not None and last_event_id in known
-    for event in events:
-        if skipping:
-            skipping = event.event_id != last_event_id
-            continue
-        if isinstance(event, InterviewerMessage | CandidateMessage):
-            role = "interviewer" if isinstance(event, InterviewerMessage) else "candidate"
+async def _replay(websocket: WebSocket, entries: list[TranscriptEntry | SessionFinished]) -> None:
+    for entry in entries:
+        if isinstance(entry, TranscriptEntry):
             await _send(
                 websocket,
                 ServerTranscriptEntry(
-                    event_id=event.event_id, seq=event.seq, role=role, text=event.text, occurred_at=event.occurred_at
+                    event_id=entry.event_id,
+                    seq=entry.seq,
+                    role=entry.role,
+                    text=entry.text,
+                    occurred_at=entry.occurred_at,
                 ),
             )
-        elif isinstance(event, SessionCompleted):
-            await _send(websocket, ServerSessionCompleted(event_id=event.event_id, seq=event.seq))
+        else:
+            await _send(websocket, ServerSessionCompleted(event_id=entry.event_id, seq=entry.seq))
 
 
 async def _stream(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -> None:
@@ -128,7 +128,7 @@ async def _stream(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -
                 websocket,
                 ServerInterviewerMessageDelta(turn_id=output.turn_id, message_id=output.message_id, delta=output.delta),
             )
-        elif isinstance(output, InterviewerMessage):
+        elif isinstance(output, MessageCompleted):
             await _send(
                 websocket,
                 ServerInterviewerMessageCompleted(
@@ -139,7 +139,7 @@ async def _stream(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -
                     text=output.text,
                 ),
             )
-        else:
+        elif isinstance(output, SessionFinished):
             await _send(websocket, ServerSessionCompleted(event_id=output.event_id, seq=output.seq))
 
 
@@ -171,30 +171,29 @@ async def interview_ws(websocket: WebSocket) -> None:
     if connection is None:
         return
 
-    template = connection.context.template
     await _send(
         websocket,
         ServerReady(
             attempt_id=connection.attempt_id,
-            language=template.language,
-            question_count=template.question_count,
-            duration_minutes=template.duration_minutes,
+            language=connection.language,
+            question_count=connection.question_count,
+            duration_minutes=connection.duration_minutes,
             last_event_id=hello.last_event_id,
         ),
     )
 
     presence_token: str | None = None
     try:
-        presence_token = await container.register_interview_connection_use_case(connection)
-        await _replay(websocket, await container.list_interview_events_use_case(connection), hello.last_event_id)
-        if not await _stream_guarded(websocket, container.open_interview_session_use_case(connection)):
+        presence_token = await container.interview_session_service.register_connection(connection)
+        await _replay(websocket, await container.interview_session_service.transcript(connection, hello.last_event_id))
+        if not await _stream_guarded(websocket, container.interview_session_service.open_session(connection)):
             return
         while True:
             message = _parse_client_message(await websocket.receive_text())
             if isinstance(message, ClientPing):
                 await _send(websocket, ServerPong())
             elif isinstance(message, ClientCandidateMessage):
-                outputs = container.handle_candidate_answer_use_case(connection, message.turn_id, message.text)
+                outputs = container.interview_session_service.answer(connection, message.turn_id, message.text)
                 if not await _stream_guarded(websocket, outputs):
                     return
             else:
@@ -204,6 +203,6 @@ async def interview_ws(websocket: WebSocket) -> None:
     finally:
         try:
             if presence_token is not None:
-                await container.pause_interview_session_use_case(connection, presence_token)
+                await container.interview_session_service.pause(connection, presence_token)
         except Exception:
             logger.exception("Pausing the interview session failed for attempt %s", connection.attempt_id)

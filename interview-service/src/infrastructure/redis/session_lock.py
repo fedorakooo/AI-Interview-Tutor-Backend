@@ -7,12 +7,12 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.session_errors import SessionBusyError
-from src.domain.interfaces.session_lock import ISessionLock
+from src.domain.interfaces.session.session_lock import ISessionLock
 
 RELEASE_SCRIPT = "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end"
 
 
-class RedisSessionLock(ISessionLock):
+class SessionLock(ISessionLock):
     def __init__(self, client: Redis, ttl_seconds: int = 120, wait_seconds: float = 2.0) -> None:
         self._client = client
         self._ttl_ms = ttl_seconds * 1000

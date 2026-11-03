@@ -1,6 +1,5 @@
 import pytest
 from shared_models.assessment import contracts, evidence, session_events, session_state
-
 from src.domain.enums.assessment_mode import AssessmentMode
 from src.domain.enums.completion_reason import CompletionReason
 from src.domain.enums.coverage_status import CoverageStatus

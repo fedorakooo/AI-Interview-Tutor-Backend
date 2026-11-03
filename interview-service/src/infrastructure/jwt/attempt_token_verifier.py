@@ -4,7 +4,7 @@ from jwt_handler.exceptions import TokenError
 from jwt_handler.interfaces import ICandidateInterviewTokenVerifier
 
 from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
-from src.domain.interfaces.attempt_token_verifier import IAttemptTokenVerifier
+from src.domain.interfaces.clients.attempt_token_verifier import IAttemptTokenVerifier
 
 
 class AttemptTokenVerifier(IAttemptTokenVerifier):

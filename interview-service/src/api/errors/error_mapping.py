@@ -13,6 +13,7 @@ from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
 from src.domain.exceptions.dependency_errors import DependencyUnavailableError
 from src.domain.exceptions.feedback_errors import FeedbackDisabledError, FeedbackLeakError
 from src.domain.exceptions.interview_service_error import InterviewServiceError
+from src.domain.exceptions.invalid_value_errors import InvalidDomainValueError
 from src.domain.exceptions.report_errors import (
     FocusNotFoundError,
     InconsistentReportError,
@@ -88,6 +89,9 @@ ERROR_MAPPING: dict[type[InterviewServiceError], ErrorSpec] = {
         status.HTTP_500_INTERNAL_SERVER_ERROR, "Interview journal is inconsistent", ErrorCode.INTERNAL_ERROR
     ),
     InconsistentReportError: ErrorSpec(status.HTTP_500_INTERNAL_SERVER_ERROR, "Report is inconsistent"),
+    InvalidDomainValueError: ErrorSpec(
+        status.HTTP_500_INTERNAL_SERVER_ERROR, "Stored data is invalid", ErrorCode.INTERNAL_ERROR
+    ),
     EmptyInterviewerMessageError: ErrorSpec(
         status.HTTP_502_BAD_GATEWAY, "Interviewer returned no message", ErrorCode.INTERNAL_ERROR, retryable=True
     ),

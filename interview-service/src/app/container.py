@@ -1,55 +1,52 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
 
 import httpx
 from jwt_handler.handlers import CandidateInterviewTokenVerifier
 from jwt_handler.interfaces import ICandidateInterviewTokenVerifier
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
 from redis.asyncio import Redis
+from src.agents.answer_evaluator.agent import AnswerEvaluator
+from src.agents.assessment_writer.agent import AssessmentTextWriter
+from src.agents.feedback_writer.agent import FeedbackWriter
+from src.agents.interviewer.agent import InterviewerAgent
+from src.agents.models import parse_model_specs
+from src.agents.spec_drafter.agent import SpecDrafter
+from src.application.interfaces.assessment_report_service import IAssessmentReportService
+from src.application.interfaces.candidate_feedback_service import ICandidateFeedbackService
+from src.application.interfaces.data_erasure_service import IDataErasureService
+from src.application.interfaces.interview_session_service import IInterviewSessionService
+from src.application.interfaces.template_draft_service import ITemplateDraftService
 from src.application.services.assessment_report_service import AssessmentReportService
+from src.application.services.candidate_feedback_service import CandidateFeedbackService
 from src.application.services.completion_outbox_dispatcher import CompletionOutboxDispatcher
-from src.application.services.interview_turn_service import InterviewTurnService
-from src.application.use_cases.assessment_reports import (
-    AddFocusReviewUseCase,
-    GetAssessmentOverviewUseCase,
-    GetFocusDetailUseCase,
-)
-from src.application.use_cases.candidate_feedback import EditCandidateFeedbackUseCase, GetCandidateFeedbackUseCase
-from src.application.use_cases.data_erasure import EraseAttemptDataUseCase
-from src.application.use_cases.interview_session import (
-    HandleCandidateAnswerUseCase,
-    ListInterviewEventsUseCase,
-    OpenInterviewSessionUseCase,
-    PauseInterviewSessionUseCase,
-    RegisterInterviewConnectionUseCase,
-)
-from src.application.use_cases.open_interview_connection import OpenInterviewConnectionUseCase
-from src.application.use_cases.template_drafts import CreateTemplateDraftUseCase
+from src.application.services.completion_publisher import CompletionPublisher
+from src.application.services.cv_loader import CvLoader
+from src.application.services.data_erasure_service import DataErasureService
+from src.application.services.evidence_recorder import EvidenceRecorder
+from src.application.services.interview_session_service import InterviewSessionService
+from src.application.services.interviewer_turn import InterviewerTurn
+from src.application.services.report_loader import ReportLoader
+from src.application.services.template_draft_service import TemplateDraftService
 from src.config import settings
-from src.domain.interfaces.answer_evaluator import IAnswerEvaluator
-from src.domain.interfaces.assessment_completed_publisher import IAssessmentCompletedPublisher
-from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
-from src.domain.interfaces.assessment_repository import IAssessmentRepository
-from src.domain.interfaces.assessment_text_writer import IAssessmentTextWriter
-from src.domain.interfaces.attempt_data_repository import IAttemptDataRepository
-from src.domain.interfaces.candidate_cv_repository import ICandidateCvRepository
-from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
-from src.domain.interfaces.feedback_repository import IFeedbackRepository
-from src.domain.interfaces.feedback_writer import IFeedbackWriter
-from src.domain.interfaces.interview_event_repository import IInterviewEventRepository
-from src.domain.interfaces.interviewer_agent import IInterviewerAgent
-from src.domain.interfaces.session_lock import ISessionLock
-from src.domain.interfaces.session_presence import ISessionPresence
-from src.domain.interfaces.spec_drafter import ISpecDrafter
-from src.infrastructure.ai.assessment_writer import PydanticAssessmentTextWriter
-from src.infrastructure.ai.evaluator import PydanticAnswerEvaluator
-from src.infrastructure.ai.feedback_writer import PydanticFeedbackWriter
-from src.infrastructure.ai.interviewer import PydanticInterviewerAgent
-from src.infrastructure.ai.models import parse_model_specs
-from src.infrastructure.ai.spec_agent import PydanticSpecDrafter
+from src.domain.interfaces.ai.answer_evaluator import IAnswerEvaluator
+from src.domain.interfaces.ai.assessment_text_writer import IAssessmentTextWriter
+from src.domain.interfaces.ai.feedback_writer import IFeedbackWriter
+from src.domain.interfaces.ai.interviewer_agent import IInterviewerAgent
+from src.domain.interfaces.ai.spec_drafter import ISpecDrafter
+from src.domain.interfaces.clients.assessment_context_client import IAssessmentContextClient
+from src.domain.interfaces.messaging.assessment_completed_publisher import IAssessmentCompletedPublisher
+from src.domain.interfaces.repositories.assessment_repository import IAssessmentRepository
+from src.domain.interfaces.repositories.attempt_data_repository import IAttemptDataRepository
+from src.domain.interfaces.repositories.candidate_cv_repository import ICandidateCvRepository
+from src.domain.interfaces.repositories.completion_outbox_repository import ICompletionOutboxRepository
+from src.domain.interfaces.repositories.feedback_repository import IFeedbackRepository
+from src.domain.interfaces.repositories.interview_event_repository import IInterviewEventRepository
+from src.domain.interfaces.session.session_lock import ISessionLock
+from src.domain.interfaces.session.session_presence import ISessionPresence
 from src.infrastructure.jwt.attempt_token_verifier import AttemptTokenVerifier
+from src.infrastructure.mongo.indexed_repository import IndexedRepository
 from src.infrastructure.mongo.repositories.assessment_repository import AssessmentRepository
 from src.infrastructure.mongo.repositories.attempt_data_repository import AttemptDataRepository
 from src.infrastructure.mongo.repositories.candidate_cv_repository import CandidateCvRepository
@@ -57,29 +54,21 @@ from src.infrastructure.mongo.repositories.completion_outbox_repository import C
 from src.infrastructure.mongo.repositories.feedback_repository import FeedbackRepository
 from src.infrastructure.mongo.repositories.interview_event_repository import InterviewEventRepository
 from src.infrastructure.rabbitmq.assessment_completed_publisher import AssessmentCompletedPublisher
-from src.infrastructure.redis.session_lock import RedisSessionLock
-from src.infrastructure.redis.session_presence import RedisSessionPresence
-from src.infrastructure.user_management.assessment_context_client import UserManagementAssessmentContextClient
+from src.infrastructure.redis.session_lock import SessionLock
+from src.infrastructure.redis.session_presence import SessionPresence
+from src.infrastructure.user_management.assessment_context_client import AssessmentContextClient
 
 
 @dataclass
 class AppContainer:
-    open_interview_connection_use_case: OpenInterviewConnectionUseCase
-    list_interview_events_use_case: ListInterviewEventsUseCase
-    register_interview_connection_use_case: RegisterInterviewConnectionUseCase
-    open_interview_session_use_case: OpenInterviewSessionUseCase
-    handle_candidate_answer_use_case: HandleCandidateAnswerUseCase
-    pause_interview_session_use_case: PauseInterviewSessionUseCase
-    get_assessment_overview_use_case: GetAssessmentOverviewUseCase
-    get_focus_detail_use_case: GetFocusDetailUseCase
-    add_focus_review_use_case: AddFocusReviewUseCase
-    get_candidate_feedback_use_case: GetCandidateFeedbackUseCase
-    edit_candidate_feedback_use_case: EditCandidateFeedbackUseCase
-    create_template_draft_use_case: CreateTemplateDraftUseCase
-    erase_attempt_data_use_case: EraseAttemptDataUseCase
+    interview_session_service: IInterviewSessionService
+    assessment_report_service: IAssessmentReportService
+    candidate_feedback_service: ICandidateFeedbackService
+    template_draft_service: ITemplateDraftService
+    data_erasure_service: IDataErasureService
     completion_dispatcher: CompletionOutboxDispatcher
     completed_publisher: IAssessmentCompletedPublisher
-    indexed_repositories: list[Any]
+    indexed_repositories: list[IndexedRepository]
 
 
 def build_container(
@@ -131,68 +120,57 @@ def build_container(
         cv_documents=collection(mongo_settings.cv_analysis_collection_name),
     )
     cv_repository = cv_repository or CandidateCvRepository(collection(mongo_settings.cv_analysis_collection_name))
-    lock = lock or RedisSessionLock(redis_client)
-    presence = presence or RedisSessionPresence(redis_client)
-    evaluator = evaluator or PydanticAnswerEvaluator(parse_model_specs(settings.interview_evaluator_models))
-    interviewer = interviewer or PydanticInterviewerAgent(parse_model_specs(settings.interview_interviewer_models))
-    assessment_text_writer = assessment_text_writer or PydanticAssessmentTextWriter(
+    lock = lock or SessionLock(redis_client)
+    presence = presence or SessionPresence(redis_client)
+    evaluator = evaluator or AnswerEvaluator(parse_model_specs(settings.interview_evaluator_models))
+    interviewer = interviewer or InterviewerAgent(parse_model_specs(settings.interview_interviewer_models))
+    assessment_text_writer = assessment_text_writer or AssessmentTextWriter(
         parse_model_specs(settings.interview_report_models)
     )
-    feedback_writer = feedback_writer or PydanticFeedbackWriter(parse_model_specs(settings.interview_feedback_models))
-    spec_drafter = spec_drafter or PydanticSpecDrafter(parse_model_specs(settings.interview_spec_models))
+    feedback_writer = feedback_writer or FeedbackWriter(parse_model_specs(settings.interview_feedback_models))
+    spec_drafter = spec_drafter or SpecDrafter(parse_model_specs(settings.interview_spec_models))
     completed_publisher = completed_publisher or AssessmentCompletedPublisher(
         amqp_url=settings.rabbitmq_settings.url,
         queue_name=settings.rabbitmq_settings.assessment_completed_queue_name,
     )
     user_management = settings.user_management_settings
-    context_client = context_client or UserManagementAssessmentContextClient(
+    context_client = context_client or AssessmentContextClient(
         client=http_client,
         base_url=user_management.url,
         service_token=user_management.internal_service_token,
     )
     token_verifier = token_verifier or CandidateInterviewTokenVerifier(public_key=settings.jwt_settings.public_key)
-    attempt_token_verifier = AttemptTokenVerifier(token_verifier)
 
-    turn_service = InterviewTurnService(
-        event_repository,
-        evaluator,
-        interviewer,
-        cv_repository,
-        completed_publisher,
-        completion_outbox_repository,
-        clock,
-    )
-    report_service = AssessmentReportService(event_repository, assessment_repository, assessment_text_writer, clock)
-    get_feedback_use_case = GetCandidateFeedbackUseCase(
-        report_service, feedback_repository, feedback_writer, context_client, clock
-    )
+    completion_publisher = CompletionPublisher(completion_outbox_repository, completed_publisher, clock)
+    cv_loader = CvLoader(cv_repository)
+    report_loader = ReportLoader(event_repository, assessment_repository, assessment_text_writer, clock)
+
+    indexed_repositories = [
+        repository
+        for repository in (event_repository, assessment_repository, feedback_repository, completion_outbox_repository)
+        if isinstance(repository, IndexedRepository)
+    ]
 
     return AppContainer(
-        open_interview_connection_use_case=OpenInterviewConnectionUseCase(attempt_token_verifier, context_client),
-        list_interview_events_use_case=ListInterviewEventsUseCase(event_repository),
-        register_interview_connection_use_case=RegisterInterviewConnectionUseCase(presence),
-        open_interview_session_use_case=OpenInterviewSessionUseCase(lock, event_repository, turn_service),
-        handle_candidate_answer_use_case=HandleCandidateAnswerUseCase(lock, event_repository, turn_service, clock),
-        pause_interview_session_use_case=PauseInterviewSessionUseCase(lock, presence, event_repository, clock),
-        get_assessment_overview_use_case=GetAssessmentOverviewUseCase(report_service, context_client),
-        get_focus_detail_use_case=GetFocusDetailUseCase(report_service, context_client),
-        add_focus_review_use_case=AddFocusReviewUseCase(report_service, assessment_repository, context_client, clock),
-        get_candidate_feedback_use_case=get_feedback_use_case,
-        edit_candidate_feedback_use_case=EditCandidateFeedbackUseCase(
-            report_service, feedback_repository, get_feedback_use_case, context_client, clock
+        interview_session_service=InterviewSessionService(
+            AttemptTokenVerifier(token_verifier),
+            context_client,
+            lock,
+            presence,
+            event_repository,
+            cv_loader,
+            EvidenceRecorder(event_repository, evaluator, clock),
+            InterviewerTurn(event_repository, interviewer, cv_loader, completion_publisher, clock),
+            completion_publisher,
+            clock,
         ),
-        create_template_draft_use_case=CreateTemplateDraftUseCase(spec_drafter),
-        erase_attempt_data_use_case=EraseAttemptDataUseCase(lock, attempt_data_repository),
+        assessment_report_service=AssessmentReportService(report_loader, assessment_repository, context_client, clock),
+        candidate_feedback_service=CandidateFeedbackService(
+            report_loader, feedback_repository, feedback_writer, context_client, clock
+        ),
+        template_draft_service=TemplateDraftService(spec_drafter),
+        data_erasure_service=DataErasureService(lock, attempt_data_repository),
         completion_dispatcher=CompletionOutboxDispatcher(completion_outbox_repository, completed_publisher),
         completed_publisher=completed_publisher,
-        indexed_repositories=[
-            repository
-            for repository in (
-                event_repository,
-                assessment_repository,
-                feedback_repository,
-                completion_outbox_repository,
-            )
-            if hasattr(repository, "ensure_indexes")
-        ],
+        indexed_repositories=indexed_repositories,
     )

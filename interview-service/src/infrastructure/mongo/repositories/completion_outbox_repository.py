@@ -3,10 +3,12 @@ from uuid import UUID
 from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo import ASCENDING
 from pymongo.errors import DuplicateKeyError, PyMongoError
-from shared_models.assessment import AssessmentCompleted
+from shared_models.assessment import AssessmentCompleted as ContractAssessmentCompleted
 
+from src.domain.events.assessment_completed import AssessmentCompleted
 from src.domain.exceptions.dependency_errors import DependencyUnavailableError
-from src.domain.interfaces.completion_outbox_repository import ICompletionOutboxRepository
+from src.domain.interfaces.repositories.completion_outbox_repository import ICompletionOutboxRepository
+from src.infrastructure.mappers.assessment_completed_mapper import AssessmentCompletedMapper
 
 
 class CompletionOutboxRepository(ICompletionOutboxRepository):
@@ -20,7 +22,7 @@ class CompletionOutboxRepository(ICompletionOutboxRepository):
     async def enqueue(self, event: AssessmentCompleted) -> None:
         document = {
             "event_id": str(event.event_id),
-            "payload": event.model_dump(mode="json"),
+            "payload": AssessmentCompletedMapper.to_contract(event).model_dump(mode="json"),
             "published": False,
             "created_at": event.occurred_at,
         }
@@ -37,7 +39,10 @@ class CompletionOutboxRepository(ICompletionOutboxRepository):
             documents = await cursor.to_list(length=limit)
         except PyMongoError as exc:
             raise DependencyUnavailableError() from exc
-        return [AssessmentCompleted.model_validate(document["payload"]) for document in documents]
+        return [
+            AssessmentCompletedMapper.to_domain(ContractAssessmentCompleted.model_validate(document["payload"]))
+            for document in documents
+        ]
 
     async def mark_published(self, event_id: UUID) -> None:
         try:
