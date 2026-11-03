@@ -29,7 +29,7 @@ class CompletionOutboxDispatcher:
                 await self._outbox.mark_published(event.event_id)
                 published += 1
             except Exception:
-                logger.exception("Retrying AssessmentCompleted publication failed")
+                logger.exception("Retrying AssessmentCompleted publication failed for event %s", event.event_id)
         return published
 
     async def start(self) -> None:

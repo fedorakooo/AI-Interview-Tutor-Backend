@@ -206,4 +206,4 @@ async def interview_ws(websocket: WebSocket) -> None:
             if presence_token is not None:
                 await container.pause_interview_session_use_case(connection, presence_token)
         except Exception:
-            logger.exception("Pausing the interview session failed")
+            logger.exception("Pausing the interview session failed for attempt %s", connection.attempt_id)

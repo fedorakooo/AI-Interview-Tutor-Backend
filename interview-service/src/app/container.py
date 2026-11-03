@@ -1,9 +1,13 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
+import httpx
 from jwt_handler.handlers import CandidateInterviewTokenVerifier
 from jwt_handler.interfaces import ICandidateInterviewTokenVerifier
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection
+from redis.asyncio import Redis
 from src.application.services.assessment_report_service import AssessmentReportService
 from src.application.services.interview_turn_service import InterviewTurnService
 from src.application.use_cases.assessment_reports import (
@@ -77,13 +81,13 @@ class AppContainer:
     get_assessment_template_use_case: GetAssessmentTemplateUseCase
     completion_dispatcher: CompletionOutboxDispatcher
     completed_publisher: IAssessmentCompletedPublisher
-    indexed_repositories: list
+    indexed_repositories: list[Any]
 
 
 def build_container(
-    mongo_client,
-    redis_client,
-    http_client,
+    mongo_client: AsyncIOMotorClient,
+    redis_client: Redis,
+    http_client: httpx.AsyncClient,
     *,
     event_repository: IInterviewEventRepository | None = None,
     assessment_repository: IAssessmentRepository | None = None,
@@ -105,7 +109,7 @@ def build_container(
 ) -> AppContainer:
     mongo_settings = settings.mongo_settings
 
-    def collection(name: str):
+    def collection(name: str) -> AsyncIOMotorCollection:
         return mongo_client[mongo_settings.db_name][name]
 
     event_repository = event_repository or InterviewEventRepository(
