@@ -14,6 +14,7 @@ from src.domain.exceptions.assessment_context_errors import (
 )
 from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
 from src.domain.interfaces.assessment_context_client import IAssessmentContextClient
+from src.infrastructure.jwt.attempt_token_verifier import AttemptTokenVerifier
 
 from tests.conftest import PRIVATE_KEY, PUBLIC_KEY
 
@@ -48,7 +49,9 @@ def mint_interview_token(attempt_id: UUID, **overrides: object) -> str:
 
 
 def build_use_case(client: FakeContextClient) -> OpenInterviewConnectionUseCase:
-    return OpenInterviewConnectionUseCase(CandidateInterviewTokenVerifier(public_key=PUBLIC_KEY), client)
+    return OpenInterviewConnectionUseCase(
+        AttemptTokenVerifier(CandidateInterviewTokenVerifier(public_key=PUBLIC_KEY)), client
+    )
 
 
 async def test_attempt_id_comes_from_the_token() -> None:

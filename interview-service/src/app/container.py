@@ -44,6 +44,7 @@ from src.infrastructure.ai.feedback_writer import PydanticFeedbackWriter
 from src.infrastructure.ai.interviewer import PydanticInterviewerAgent
 from src.infrastructure.ai.models import parse_model_specs
 from src.infrastructure.ai.spec_agent import PydanticSpecDrafter
+from src.infrastructure.jwt.attempt_token_verifier import AttemptTokenVerifier
 from src.infrastructure.mongo.repositories.assessment_repository import AssessmentRepository
 from src.infrastructure.mongo.repositories.attempt_data_repository import AttemptDataRepository
 from src.infrastructure.mongo.repositories.candidate_cv_repository import CandidateCvRepository
@@ -154,6 +155,7 @@ def build_container(
         service_token=user_management.internal_service_token,
     )
     token_verifier = token_verifier or CandidateInterviewTokenVerifier(public_key=settings.jwt_settings.public_key)
+    attempt_token_verifier = AttemptTokenVerifier(token_verifier)
 
     turn_service = InterviewTurnService(
         event_repository,
@@ -168,7 +170,7 @@ def build_container(
     get_feedback_use_case = GetCandidateFeedbackUseCase(report_service, feedback_repository, feedback_writer, clock)
 
     return AppContainer(
-        open_interview_connection_use_case=OpenInterviewConnectionUseCase(token_verifier, context_client),
+        open_interview_connection_use_case=OpenInterviewConnectionUseCase(attempt_token_verifier, context_client),
         list_interview_events_use_case=ListInterviewEventsUseCase(event_repository),
         register_interview_connection_use_case=RegisterInterviewConnectionUseCase(presence),
         open_interview_session_use_case=OpenInterviewSessionUseCase(lock, event_repository, turn_service),
