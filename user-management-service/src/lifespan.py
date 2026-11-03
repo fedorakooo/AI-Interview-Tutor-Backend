@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from src.api.dependencies.database import get_async_engine
 from src.api.dependencies.redis import get_redis
 from src.config import settings
+from src.infrastructure.jobs.assessment_retention_job import AssessmentRetentionJob
 from src.infrastructure.logger.logger import logger
 from src.infrastructure.rabbitmq.assessment_completed_consumer import AssessmentCompletedConsumer
 from src.infrastructure.rabbitmq.assessment_outbox_dispatcher import AssessmentOutboxDispatcher
@@ -42,6 +43,8 @@ async def lifespan(app: FastAPI):
     await cv_results_consumer.start()
     await assessment_completed_consumer.start()
     await assessment_outbox_dispatcher.start()
+    assessment_retention_job = AssessmentRetentionJob(logger=logger)
+    await assessment_retention_job.start()
 
     try:
         yield
@@ -49,6 +52,7 @@ async def lifespan(app: FastAPI):
         await cv_results_consumer.stop()
         await assessment_completed_consumer.stop()
         await assessment_outbox_dispatcher.stop()
+        await assessment_retention_job.stop()
         if redis:
             await redis.aclose()
         if async_engine:

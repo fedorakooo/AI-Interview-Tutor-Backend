@@ -5,7 +5,7 @@ from fastapi import Request
 from src.agent.answer_grader import AnswerGrader
 from src.agent.plan_generator import PlanGenerator
 from src.application.services.plan_context_builder import PlanContextBuilder
-from src.application.services.practice_services import ExerciseSanitizer, ExerciseValidator, QuotaService
+from src.application.services.quota_service import QuotaService
 from src.application.use_cases.plan_use_cases import (
     ArchivePlanUseCase,
     GetPlanStatusUseCase,
@@ -17,6 +17,8 @@ from src.application.use_cases.profile_use_cases import GetProfileUseCase, Updat
 from src.application.use_cases.worker_use_cases import GeneratePlanUseCase, GetProgressUseCase, SubmitAttemptUseCase
 from src.config import settings
 from src.domain.interfaces.message_publisher import IMessagePublisher
+from src.domain.services.exercise_sanitizer import ExerciseSanitizer
+from src.domain.services.exercise_validator import ExerciseValidator
 from src.infrastructure.mongo.context_reader import ContextReader
 from src.infrastructure.mongo.repositories import AttemptRepository, PlanRepository, ProfileRepository
 from src.infrastructure.rabbitmq.publisher import RabbitMQPublisher
@@ -51,7 +53,7 @@ def build_container(
     context_builder = PlanContextBuilder(context_reader)
     publisher = publisher or RabbitMQPublisher(settings.rabbitmq_settings.url)
     sanitizer = ExerciseSanitizer()
-    validator = ExerciseValidator()
+    validator = ExerciseValidator(settings.practice_settings.max_exercises_per_plan)
     quota_service = QuotaService(profile_repository)
     plan_generator = plan_generator or PlanGenerator()
     answer_grader = answer_grader or AnswerGrader()
@@ -64,17 +66,6 @@ def build_container(
         validator,
         publisher,
         settings.rabbitmq_settings.practice_plan_ready_queue_name,
-    )
-
-    from src.application.use_cases.worker_use_cases import HandleInterviewCompletedUseCase
-
-    handle_interview_use_case = HandleInterviewCompletedUseCase(
-        plan_repository,
-        profile_repository,
-        context_builder,
-        context_reader,
-        publisher,
-        settings.rabbitmq_settings.practice_plan_queue_name,
     )
 
     return (
@@ -104,7 +95,6 @@ def build_container(
             mongo_client=mongo_client,
         ),
         generate_plan_use_case,
-        handle_interview_use_case,
         plan_repository,
         attempt_repository,
         profile_repository,

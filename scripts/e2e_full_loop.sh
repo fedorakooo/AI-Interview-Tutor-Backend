@@ -4,7 +4,6 @@ set -uo pipefail
 
 API_BASE="${API_BASE:-http://localhost/api/v1}"
 UMS_URL="${UMS_URL:-${API_BASE}}"
-INTERVIEW_URL="${INTERVIEW_URL:-http://localhost/api/v1/interview}"
 PRACTICE_URL="${PRACTICE_URL:-http://localhost/api/v1/practice}"
 EMAIL="${E2E_EMAIL:-e2e_$(date +%s)@example.com}"
 PASSWORD="${E2E_PASSWORD:-E2ePassw0rd!}"
@@ -58,10 +57,6 @@ if [[ -f "${FIXTURE_PDF}" ]]; then
 else
   echo "==> CV upload skipped (fixture missing)"
 fi
-echo
-
-echo "==> Interview sessions"
-curl_best_effort "${INTERVIEW_URL}/sessions" -H "$AUTH" | head -c 200 || echo "(sessions skipped)"
 echo
 
 echo "==> Practice profile"

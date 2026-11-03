@@ -25,6 +25,7 @@ def template_for_email_type(email_type: str, *, subject: str, body: str) -> tupl
         "welcome": ("Welcome to AI Interview Tutor", "Get Started"),
         "plan_ready": ("Your practice plan is ready", "View Plan"),
         "interview_complete": ("Interview complete — report ready", "View Report"),
+        "candidate_feedback": ("Feedback on your interview", "Open"),
     }
     title, cta = mapping.get(email_type, (subject, "Open"))
     html = render_email_html(title=title, body_text=body)

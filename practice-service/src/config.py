@@ -53,8 +53,6 @@ class RabbitMQSettings(BaseSettings):
     timeout: float = 60.0
     practice_plan_queue_name: str = "practice-plan-stream"
     practice_plan_dlq_queue_name: str = "practice-plan-stream.dlq"
-    interview_completed_queue_name: str = "interview-completed-stream"
-    interview_completed_dlq_queue_name: str = "interview-completed-stream.dlq"
     practice_plan_ready_queue_name: str = "practice-plan-ready-stream"
 
     @property

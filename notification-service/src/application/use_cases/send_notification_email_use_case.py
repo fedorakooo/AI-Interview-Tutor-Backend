@@ -9,7 +9,7 @@ from src.domain.ports.outbound.abstract_ses_client import AbstractSESClient
 class SendNotificationEmailUseCase:
     """Send generic notification emails (verify, welcome, plan_ready, interview_complete)."""
 
-    SUPPORTED_TYPES = {"email_verify", "welcome", "plan_ready", "interview_complete", "digest"}
+    SUPPORTED_TYPES = {"email_verify", "welcome", "plan_ready", "interview_complete", "digest", "candidate_feedback"}
 
     def __init__(self, mongo_repository: AbstractMongoRepository, ses_client: AbstractSESClient):
         self.mongo_repository = mongo_repository

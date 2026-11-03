@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import jwt
 from jwt.exceptions import InvalidTokenError
+from jwt_handler.value_objects import CANDIDATE_INTERVIEW_AUDIENCE, TokenType, candidate_interview_scope
 
 from src.domain.exceptions.candidate_attempt_token_errors import CandidateAttemptTokenError
 from src.domain.interfaces.auth.candidate_attempt_token_handler import (
@@ -16,10 +17,17 @@ class CandidateAttemptTokenHandler(ICandidateAttemptTokenHandler):
 
     audience = "candidate-assessment"
 
-    def __init__(self, public_key: str, private_key: str, expire_minutes: int = 30) -> None:
+    def __init__(
+        self,
+        public_key: str,
+        private_key: str,
+        expire_minutes: int = 30,
+        interview_expire_minutes: int = 30,
+    ) -> None:
         self.public_key = public_key
         self.private_key = private_key
         self.expire_minutes = expire_minutes
+        self.interview_expire_minutes = interview_expire_minutes
 
     def mint(self, attempt_id: str) -> str:
         now = datetime.now(UTC)
@@ -31,6 +39,22 @@ class CandidateAttemptTokenHandler(ICandidateAttemptTokenHandler):
         }
         return jwt.encode(
             {**payload, "iat": now, "exp": now + timedelta(minutes=self.expire_minutes)},
+            self.private_key,
+            algorithm="RS256",
+        )
+
+    def mint_interview_token(self, attempt_id: str) -> str:
+        now = datetime.now(UTC)
+        return jwt.encode(
+            {
+                "sub": attempt_id,
+                "aud": CANDIDATE_INTERVIEW_AUDIENCE,
+                "scope": candidate_interview_scope(attempt_id),
+                "jti": str(uuid4()),
+                "type": TokenType.CANDIDATE_INTERVIEW,
+                "iat": now,
+                "exp": now + timedelta(minutes=self.interview_expire_minutes),
+            },
             self.private_key,
             algorithm="RS256",
         )

@@ -1,7 +1,6 @@
 from shared_models.practice.attempt import AttemptStatus, ExerciseAttempt, GradingResult
 from shared_models.practice.exercise import Choice, Exercise, ExerciseType, FlashcardRating
 from shared_models.practice.messaging import (
-    InterviewCompletedEvent,
     PlanGenerationRequest,
     PracticePlanJobMessage,
     PracticePlanReadyEvent,
@@ -25,7 +24,6 @@ __all__ = [
     "ExerciseType",
     "FlashcardRating",
     "GradingResult",
-    "InterviewCompletedEvent",
     "PlanContextSnapshot",
     "PlanGenerationRequest",
     "PlanSource",

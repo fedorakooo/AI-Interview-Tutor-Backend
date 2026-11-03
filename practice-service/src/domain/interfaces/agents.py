@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from typing import Protocol
 
 from shared_models.practice.attempt import GradingResult
@@ -19,17 +20,19 @@ class BuiltContext(Protocol):
     cv_correlation_id: str | None
 
 
-class IPlanGenerator(Protocol):
+class IPlanGenerator(ABC):
     """LLM port for generating structured practice plan drafts."""
 
+    @abstractmethod
     async def generate(self, context: BuiltContext) -> PracticePlanDraft:
         """Generate exercises for the given personalization context."""
         pass
 
 
-class IAnswerGrader(Protocol):
+class IAnswerGrader(ABC):
     """LLM port for grading open-ended exercise answers."""
 
+    @abstractmethod
     async def grade_open_question(self, exercise: Exercise, user_answer: str) -> GradingResult:
         """Grade a free-text answer against the exercise rubric."""
         pass

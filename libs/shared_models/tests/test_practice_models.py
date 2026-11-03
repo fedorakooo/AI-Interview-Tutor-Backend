@@ -3,7 +3,6 @@ from uuid import uuid4
 
 from shared_models.practice.exercise import ExerciseType
 from shared_models.practice.messaging import (
-    InterviewCompletedEvent,
     PlanGenerationRequest,
     PracticePlanJobMessage,
 )
@@ -30,19 +29,6 @@ class TestPracticePlanJobMessage:
         )
         restored = PracticePlanJobMessage.model_validate_json(original.model_dump_json())
         assert restored == original
-
-
-class TestInterviewCompletedEvent:
-    def test_json_round_trip(self) -> None:
-        original = InterviewCompletedEvent(
-            event_id=uuid4(),
-            user_id=uuid4(),
-            session_id="session-abc-123",
-            cv_correlation_id=str(uuid4()),
-            published_at=datetime.now(UTC),
-        )
-        restored = InterviewCompletedEvent.model_validate_json(original.model_dump_json())
-        assert restored.session_id == "session-abc-123"
 
 
 class TestExerciseType:

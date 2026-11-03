@@ -1,11 +1,12 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
-from shared_models.assessment.contracts import AssessmentCompleted, AssessmentContext, AttemptStatus, EmployerNotificationRequested, InvitationStatus, VacancyStatus
+from shared_models.assessment.contracts import AssessmentCompleted, AssessmentContext, AttemptStatus, CvPolicy, EmployerNotificationRequested, InvitationStatus, VacancyStatus
 from shared_models.messaging.common import AnalysisStatus
 from shared_models.messaging.cv_analysis import CVAnalysisJobMessage
 
 from src.config import settings
+from src.application.use_cases.data_erasure import is_erased
 from src.domain.exceptions.not_found_error import NotFoundError
 from src.domain.interfaces.database.uow import IUnitOfWork
 from src.infrastructure.postgres.schemas.assessment_flow import CandidateAttemptORM, CandidateInvitationORM
@@ -19,6 +20,12 @@ class AssessmentFlowError(Exception):
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def invitation_is_usable(invitation) -> bool:
+    if invitation.status in {InvitationStatus.REVOKED.value, InvitationStatus.EXPIRED.value}:
+        return False
+    return invitation.expires_at > utcnow()
 
 
 class CreateInvitationUseCase:
@@ -106,6 +113,9 @@ class PublicInvitationUseCase:
                         candidate_display_name=(display_name or "").strip() or None, consent_version=consent_version,
                         consented_at=utcnow(), status=AttemptStatus.CREATED.value, started_at=utcnow(),
                     )
+                    template = await self._uow.vacancy_repository.get_template(invitation.vacancy_id, invitation.template_version)
+                    if template is not None and template.snapshot.cv_policy == CvPolicy.NONE:
+                        attempt.status = AttemptStatus.READY.value
                     attempt = await self._uow.assessment_repository.create_attempt(attempt)
                     await self._uow.assessment_repository.create_audit_entry(
                         AuditLogORM(
@@ -140,6 +150,53 @@ class RevokeInvitationUseCase:
             return invitation
 
 
+async def _cv_policy_for_attempt(uow: IUnitOfWork, attempt_id: UUID) -> CvPolicy:
+    row = await uow.assessment_repository.get_attempt_with_invitation(attempt_id)
+    if row is None:
+        raise AssessmentFlowError()
+    _, invitation = row
+    template = await uow.vacancy_repository.get_template(invitation.vacancy_id, invitation.template_version)
+    if template is None:
+        raise AssessmentFlowError()
+    return template.snapshot.cv_policy
+
+
+class SkipAttemptCVUseCase:
+    """Let a candidate skip an optional CV so the attempt becomes ready."""
+
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, attempt_id: UUID) -> CandidateAttemptORM:
+        async with self._uow:
+            attempt = await self._uow.assessment_repository.get_attempt(attempt_id)
+            if attempt is None or await _cv_policy_for_attempt(self._uow, attempt_id) != CvPolicy.OPTIONAL:
+                raise AssessmentFlowError()
+            if attempt.status == AttemptStatus.READY.value and attempt.cv_correlation_id is None:
+                return attempt
+            if attempt.status != AttemptStatus.CREATED.value:
+                raise AssessmentFlowError()
+            attempt.status = AttemptStatus.READY.value
+            return attempt
+
+
+class EnsureInterviewAccessUseCase:
+    """Check that an attempt may start or resume its interview."""
+
+    def __init__(self, uow: IUnitOfWork):
+        self._uow = uow
+
+    async def __call__(self, attempt_id: UUID) -> None:
+        async with self._uow:
+            row = await self._uow.assessment_repository.get_attempt_with_invitation(attempt_id)
+            if row is None:
+                raise NotFoundError("Assessment attempt not found")
+            attempt, invitation = row
+            ready = attempt.status in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}
+            if not ready or not invitation_is_usable(invitation):
+                raise AssessmentFlowError()
+
+
 class UploadAttemptCVUseCase:
     """Persist and enqueue an anonymous candidate CV under its attempt boundary."""
 
@@ -156,6 +213,8 @@ class UploadAttemptCVUseCase:
         async with self._uow:
             attempt = await self._uow.assessment_repository.get_attempt(attempt_id)
             if attempt is None:
+                raise AssessmentFlowError()
+            if await _cv_policy_for_attempt(self._uow, attempt_id) == CvPolicy.NONE:
                 raise AssessmentFlowError()
             existing = await self._uow.assessment_repository.get_cv_upload_for_attempt(attempt_id)
             if existing is not None:
@@ -202,7 +261,7 @@ class GetAssessmentContextUseCase:
             if row is None:
                 raise NotFoundError("Assessment attempt not found")
             attempt, invitation = row
-            if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value}:
+            if attempt.status not in {AttemptStatus.READY.value, AttemptStatus.IN_PROGRESS.value, AttemptStatus.COMPLETED.value}:
                 raise AssessmentFlowError()
             vacancy = await self._uow.vacancy_repository.get_by_id_and_organization_id(
                 invitation.vacancy_id, invitation.organization_id
@@ -210,7 +269,13 @@ class GetAssessmentContextUseCase:
             template = await self._uow.vacancy_repository.get_template(
                 invitation.vacancy_id, invitation.template_version
             )
-            if vacancy is None or vacancy.status != VacancyStatus.ACTIVE or template is None or attempt.cv_correlation_id is None:
+            if vacancy is None or template is None:
+                raise AssessmentFlowError()
+            if attempt.status != AttemptStatus.COMPLETED.value and (
+                vacancy.status != VacancyStatus.ACTIVE or not invitation_is_usable(invitation)
+            ):
+                raise AssessmentFlowError()
+            if template.snapshot.cv_policy == CvPolicy.REQUIRED and attempt.cv_correlation_id is None:
                 raise AssessmentFlowError()
             return AssessmentContext(
                 attempt_id=attempt.id,
@@ -221,6 +286,8 @@ class GetAssessmentContextUseCase:
                 template=template.snapshot,
                 cv_correlation_id=attempt.cv_correlation_id,
                 candidate_display_name=attempt.candidate_display_name,
+                job_description=vacancy.job_description or None,
+                brief=template.snapshot.brief or None,
             )
 
 
@@ -247,6 +314,8 @@ class RegisterAssessmentCompletionUseCase:
             ):
                 raise AssessmentFlowError()
             if attempt.status == AttemptStatus.COMPLETED.value:
+                if is_erased(attempt.candidate_email_normalized):
+                    return attempt
                 if attempt.interview_session_id != event.session_id or attempt.report_reference != event.report_reference:
                     raise AssessmentFlowError()
                 return attempt

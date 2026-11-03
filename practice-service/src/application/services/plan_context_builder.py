@@ -1,17 +1,32 @@
+from dataclasses import dataclass, field
+
 from shared_models.interview.report import SkillScore
 from shared_models.practice.exercise import ExerciseType
 from shared_models.practice.messaging import PlanGenerationRequest
 from shared_models.practice.plan import PlanContextSnapshot, PlanSource
 from shared_models.practice.profile import UserPracticeProfile
-from src.application.services.practice_services import BuiltPlanContext
-from src.infrastructure.mongo.context_reader import ContextReader
+from src.domain.interfaces.context_reader import IContextReader
 
 DEFAULT_FOCUS_SKILLS = ["General CS", "Problem Solving"]
 LOW_SCORE_THRESHOLD = 6.0
 
 
+@dataclass
+class BuiltPlanContext:
+    focus_skills: list[str]
+    difficulty: str
+    exercise_types: list[ExerciseType]
+    exercise_count: int
+    source: str
+    context_snapshot: PlanContextSnapshot
+    interview_session_id: str | None = None
+    cv_correlation_id: str | None = None
+    title_hint: str | None = None
+    user_goals: list[str] = field(default_factory=list)
+
+
 class PlanContextBuilder:
-    def __init__(self, context_reader: ContextReader) -> None:
+    def __init__(self, context_reader: IContextReader) -> None:
         self._context_reader = context_reader
 
     async def build(

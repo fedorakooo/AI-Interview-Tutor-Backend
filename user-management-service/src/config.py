@@ -106,11 +106,24 @@ class AssessmentSettings(BaseSettings):
     invitation_token_pepper: str = ""
     invitation_ttl_hours: int = 48
     candidate_attempt_token_expire_minutes: int = 240
+    candidate_interview_token_expire_minutes: int = 30
+    retention_job_enabled: bool = True
+    retention_job_interval_seconds: int = 3600
+    retention_batch_size: int = 20
     # Required for service-to-service routes.  An empty value deliberately
     # disables those routes rather than creating a development backdoor.
     internal_service_token: str = ""
 
     model_config = SettingsConfigDict(env_prefix="ASSESSMENT_", env_file=".env", extra="ignore")
+
+
+class InterviewServiceSettings(BaseSettings):
+    """Location of the interview service internal API."""
+
+    url: str = "http://interview-service:8001"
+    timeout_seconds: float = 30.0
+
+    model_config = SettingsConfigDict(env_prefix="INTERVIEW_SERVICE_", env_file=".env", extra="ignore")
 
 
 class S3Settings(BaseSettings):
@@ -141,6 +154,7 @@ class RabbitMQSettings(BaseSettings):
     user_deleted_queue_name: str = "user-deleted-stream"
     assessment_completed_queue_name: str = "assessment-completed"
     employer_notification_queue_name: str = "employer-notification-requested"
+    notifications_queue_name: str = "notifications-stream"
 
     timeout: float = 30
 
@@ -167,6 +181,7 @@ class Settings(BaseSettings):
     frontend_settings: FrontendSettings = FrontendSettings()
     oauth_settings: OAuthSettings = OAuthSettings()
     assessment_settings: AssessmentSettings = AssessmentSettings()
+    interview_service_settings: InterviewServiceSettings = InterviewServiceSettings()
     s3_settings: S3Settings = S3Settings()
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

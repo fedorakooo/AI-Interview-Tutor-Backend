@@ -2,9 +2,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-
 from shared_models.assessment.contracts import HumanDecisionType
-
 from src.application.use_cases.employer_assessment import GetAuthorizedReportUseCase, RecordHumanDecisionUseCase
 from src.domain.exceptions.not_found_error import NotFoundError
 
@@ -25,7 +23,9 @@ class FakeAssessmentRepository:
     async def upsert_decision(self, attempt_id, decision, private_note, actor_user_id):
         existing = self.decisions.get(attempt_id)
         if existing is None:
-            existing = SimpleNamespace(decision=decision, private_note=private_note, actor_user_id=actor_user_id, version=1)
+            existing = SimpleNamespace(
+                decision=decision, private_note=private_note, actor_user_id=actor_user_id, version=1
+            )
             self.decisions[attempt_id] = existing
         else:
             existing.decision = decision
@@ -53,9 +53,13 @@ class FakeUow:
 @pytest.mark.asyncio
 async def test_report_view_is_organization_scoped_and_audited():
     organization_id, foreign_organization_id, attempt_id, actor_id = uuid4(), uuid4(), uuid4(), uuid4()
-    repository = FakeAssessmentRepository({
-        attempt_id: SimpleNamespace(id=attempt_id, organization_id=organization_id, report_reference="report-opaque-id"),
-    })
+    repository = FakeAssessmentRepository(
+        {
+            attempt_id: SimpleNamespace(
+                id=attempt_id, organization_id=organization_id, report_reference="report-opaque-id"
+            ),
+        }
+    )
     use_case = GetAuthorizedReportUseCase(FakeUow(repository))
 
     attempt = await use_case(organization_id, attempt_id, actor_id)
@@ -84,3 +88,22 @@ async def test_decision_update_preserves_previous_value_in_audit_history():
         "private_note": "Awaiting references",
         "version": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_report_access_audit_uses_the_requested_action_and_details():
+    organization_id, attempt_id, actor_id = uuid4(), uuid4(), uuid4()
+    repository = FakeAssessmentRepository(
+        {
+            attempt_id: SimpleNamespace(
+                id=attempt_id, organization_id=organization_id, report_reference="report-opaque-id"
+            ),
+        }
+    )
+
+    await GetAuthorizedReportUseCase(FakeUow(repository))(
+        organization_id, attempt_id, actor_id, "assessment_report.reviewed", {"focus_id": "databases"}
+    )
+
+    entry = repository.audit_entries[0]
+    assert (entry.action, entry.after) == ("assessment_report.reviewed", {"focus_id": "databases"})

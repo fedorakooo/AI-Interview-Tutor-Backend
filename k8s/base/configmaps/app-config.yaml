@@ -10,10 +10,6 @@ data:
   POSTGRES_PORT: "5432"
   POSTGRES_NAME: user_management
 
-  POSTGRES_CHECKPOINT_HOST: postgres
-  POSTGRES_CHECKPOINT_PORT: "5432"
-  POSTGRES_CHECKPOINT_USER: postgres
-  POSTGRES_CHECKPOINT_NAME: interview
 
   REDIS_HOST: redis
   REDIS_PORT: "6379"
@@ -30,8 +26,6 @@ data:
   RABBITMQ_RESET_PASSWORD_DLQ_QUEUE_NAME: reset-password-stream.dlq
   RABBITMQ_PRACTICE_PLAN_QUEUE_NAME: practice-plan-stream
   RABBITMQ_PRACTICE_PLAN_DLQ_QUEUE_NAME: practice-plan-stream.dlq
-  RABBITMQ_INTERVIEW_COMPLETED_QUEUE_NAME: interview-completed-stream
-  RABBITMQ_INTERVIEW_COMPLETED_DLQ_QUEUE_NAME: interview-completed-stream.dlq
   RABBITMQ_PRACTICE_PLAN_READY_QUEUE_NAME: practice-plan-ready-stream
 
   MONGODB_HOST: mongodb
@@ -54,7 +48,6 @@ data:
 
   ENVIRONMENT: development
   DEBUG: "true"
-  ALLOW_SAMPLE_CV_FALLBACK: "true"
   CORS_ALLOWED_ORIGINS: http://localhost:3000,http://localhost
 
   LLM_PROVIDER: openai

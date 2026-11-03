@@ -1,21 +1,17 @@
-import asyncio
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from pymongo.errors import DuplicateKeyError
 from shared_models.practice.attempt import AttemptStatus, ExerciseAttempt
 from shared_models.practice.exercise import ExerciseType, FlashcardRating
 from shared_models.practice.messaging import (
-    PlanGenerationRequest,
     PlanSource,
     PracticePlanJobMessage,
     PracticePlanReadyEvent,
 )
-from shared_models.practice.plan import PlanStatus, PracticePlan
+from shared_models.practice.plan import PlanStatus
 from src.agent.answer_grader import AnswerGrader
 from src.agent.plan_generator import PlanGenerator
 from src.application.services.plan_context_builder import PlanContextBuilder
-from src.application.services.practice_services import ExerciseValidator, StreakService
 from src.config import settings
 from src.domain.exceptions.practice_errors import (
     AlreadyAttemptedError,
@@ -27,6 +23,9 @@ from src.domain.exceptions.practice_errors import (
     PlanNotReadyError,
 )
 from src.domain.interfaces.message_publisher import IMessagePublisher
+from src.domain.services.exercise_validator import ExerciseValidator
+from src.domain.services.spaced_repetition import compute_next_review
+from src.domain.services.streak_service import StreakService
 from src.logger import app_logger
 
 
@@ -156,95 +155,6 @@ class GeneratePlanUseCase:
         app_logger.info("Published practice-plan-ready for plan %s", plan_id)
 
 
-class HandleInterviewCompletedUseCase:
-    def __init__(
-        self,
-        plan_repository,
-        profile_repository,
-        context_builder: PlanContextBuilder,
-        context_reader,
-        publisher: IMessagePublisher,
-        plan_queue_name: str,
-    ) -> None:
-        self._plans = plan_repository
-        self._profiles = profile_repository
-        self._context_builder = context_builder
-        self._context_reader = context_reader
-        self._publisher = publisher
-        self._plan_queue_name = plan_queue_name
-
-    async def execute(self, event) -> bool:
-        # Interview-triggered auto-plans do not consume daily_plan_quota (post-interview UX).
-        existing = await self._plans.get_plan_by_interview_session(event.session_id)
-        if existing is not None:
-            return False
-
-        interview = await self._context_reader.get_interview_by_session(event.session_id)
-        if interview is None:
-            await asyncio.sleep(settings.practice_settings.interview_report_retry_seconds)
-            interview = await self._context_reader.get_interview_by_session(event.session_id)
-        if interview is None:
-            app_logger.warning("Interview report not found for session %s", event.session_id)
-            return False
-
-        profile = await self._profiles.get_profile(str(event.user_id))
-        if profile is None:
-            profile = self._profiles.default_profile(event.user_id)
-            await self._profiles.upsert_profile(profile)
-
-        request = PlanGenerationRequest(
-            difficulty=profile.preferred_difficulty,
-            exercise_types=profile.preferred_exercise_types
-            or [
-                ExerciseType.MCQ_SINGLE,
-                ExerciseType.OPEN_QUESTION,
-                ExerciseType.FLASHCARD,
-            ],
-            exercise_count=settings.practice_settings.default_exercise_count,
-            include_interview_context=True,
-            include_cv_context=True,
-        )
-        built = await self._context_builder.build(
-            str(event.user_id),
-            request,
-            profile,
-            interview_session_id=event.session_id,
-        )
-
-        now = datetime.now(UTC)
-        plan = PracticePlan(
-            plan_id=uuid4(),
-            user_id=event.user_id,
-            source=PlanSource.INTERVIEW,
-            status=PlanStatus.PENDING,
-            title="Post-interview practice plan",
-            focus_skills=built.focus_skills,
-            difficulty=built.context_snapshot.difficulty,
-            context_snapshot=built.context_snapshot,
-            interview_session_id=event.session_id,
-            cv_correlation_id=event.cv_correlation_id,
-            created_at=now,
-            updated_at=now,
-        )
-        try:
-            await self._plans.create_plan(plan)
-        except DuplicateKeyError:
-            app_logger.info("Plan already exists for interview session %s", event.session_id)
-            return False
-
-        message = PracticePlanJobMessage(
-            job_id=uuid4(),
-            plan_id=plan.plan_id,
-            user_id=event.user_id,
-            source=PlanSource.INTERVIEW,
-            request=request,
-            interview_session_id=event.session_id,
-            cv_correlation_id=event.cv_correlation_id,
-            published_at=now,
-        )
-        await self._publisher.publish(self._plan_queue_name, message.model_dump_json())
-        return True
-
 
 class SubmitAttemptUseCase:
     def __init__(
@@ -284,8 +194,6 @@ class SubmitAttemptUseCase:
         grading = await self._grade_exercise(exercise, answer_payload)
         next_review_at = None
         if exercise.type == ExerciseType.FLASHCARD:
-            from src.application.services.spaced_repetition import compute_next_review
-
             rating = answer_payload.get("flashcard_rating") or "good"
             next_review_at = compute_next_review(str(rating), now)
         attempt = ExerciseAttempt(

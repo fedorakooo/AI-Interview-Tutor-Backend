@@ -1,11 +1,17 @@
 """Publish completion notifications from the durable assessment outbox."""
 
 import asyncio
-import logging
 import json
+import logging
+from datetime import UTC, datetime
+from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from src.application.mappers.candidate_feedback_email import (
+    CANDIDATE_FEEDBACK_EVENT_TYPE,
+    build_candidate_feedback_email,
+)
 from src.config import settings
 from src.infrastructure.postgres.repositories.assessment_repository import AssessmentPostgresRepository
 from src.infrastructure.postgres.repositories.notification_preference_repository import NotificationPreferencePostgresRepository
@@ -29,6 +35,10 @@ class AssessmentOutboxDispatcher:
         self._producer = RabbitMQProducer(
             amqp_url=settings.rabbitmq_settings.url,
             queue_name=settings.rabbitmq_settings.employer_notification_queue_name,
+        )
+        self._notification_producer = RabbitMQProducer(
+            amqp_url=settings.rabbitmq_settings.url,
+            queue_name=settings.rabbitmq_settings.notifications_queue_name,
         )
 
     def _uow(self, session: AsyncSession) -> SqlAlchemyUnitOfWork:
@@ -66,6 +76,22 @@ class AssessmentOutboxDispatcher:
                 self.logger.exception("Assessment outbox dispatch failed")
             await asyncio.sleep(self._poll_interval_seconds)
 
+    async def _publish(self, message) -> None:
+        if message.event_type == CANDIDATE_FEEDBACK_EVENT_TYPE:
+            body = await self._candidate_feedback_body(message.payload)
+            await self._notification_producer.send_message(body)
+            return
+        await self._producer.send_message(json.dumps(message.payload, separators=(",", ":")))
+
+    async def _candidate_feedback_body(self, payload: dict) -> str:
+        async with self._session_factory() as session:
+            uow = self._uow(session)
+            async with uow:
+                attempt = await uow.assessment_repository.get_attempt(UUID(payload["attempt_id"]))
+        if attempt is None:
+            raise LookupError("attempt_missing")
+        return build_candidate_feedback_email(payload, attempt.candidate_email_normalized, datetime.now(UTC))
+
     async def dispatch_once(self) -> int:
         async with self._session_factory() as session:
             uow = self._uow(session)
@@ -74,7 +100,7 @@ class AssessmentOutboxDispatcher:
 
         for message in messages:
             try:
-                await self._producer.send_message(json.dumps(message.payload, separators=(",", ":")))
+                await self._publish(message)
             except Exception as exc:
                 async with self._session_factory() as session:
                     uow = self._uow(session)

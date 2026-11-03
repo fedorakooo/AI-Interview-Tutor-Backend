@@ -1,7 +1,8 @@
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-
+from jwt_handler.handlers import CandidateInterviewTokenVerifier
+from jwt_handler.value_objects import TokenType
 from src.domain.exceptions.candidate_attempt_token_errors import CandidateAttemptTokenError
 from src.infrastructure.auth.candidate_attempt_token_handler import CandidateAttemptTokenHandler
 
@@ -37,3 +38,26 @@ def test_candidate_attempt_token_cannot_be_used_for_another_attempt(token_handle
 
     with pytest.raises(CandidateAttemptTokenError):
         token_handler.verify(token, "attempt-2")
+
+
+def test_interview_token_is_verified_by_the_shared_verifier(token_handler):
+    token = token_handler.mint_interview_token("attempt-1")
+
+    payload = CandidateInterviewTokenVerifier(token_handler.public_key).verify(token)
+
+    assert payload["sub"] == "attempt-1"
+    assert payload["type"] == TokenType.CANDIDATE_INTERVIEW
+
+
+def test_start_token_cannot_open_an_interview(token_handler):
+    token = token_handler.mint("attempt-1")
+
+    with pytest.raises(Exception):
+        CandidateInterviewTokenVerifier(token_handler.public_key).verify(token)
+
+
+def test_interview_token_cannot_be_used_as_attempt_token(token_handler):
+    token = token_handler.mint_interview_token("attempt-1")
+
+    with pytest.raises(CandidateAttemptTokenError):
+        token_handler.verify(token, "attempt-1")

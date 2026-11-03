@@ -7,6 +7,7 @@ from pymongo import ReturnDocument
 from shared_models.practice.plan import PlanStatus, PracticePlan
 from shared_models.practice.profile import DifficultyLevel, UserPracticeProfile
 from src.config import settings
+from src.domain.interfaces.repositories import IAttemptRepository, IPlanRepository, IProfileRepository
 from src.infrastructure.mongo.client import MongoClientFactory
 
 
@@ -19,7 +20,7 @@ class PlanStatusSnapshot:
     error_message: str | None = None
 
 
-class PlanRepository:
+class PlanRepository(IPlanRepository):
     def __init__(self, mongo_client) -> None:
         self._collection = MongoClientFactory.get_collection(
             mongo_client,
@@ -120,7 +121,7 @@ class PlanRepository:
         return PracticePlan.model_validate(payload)
 
 
-class AttemptRepository:
+class AttemptRepository(IAttemptRepository):
     def __init__(self, mongo_client) -> None:
         self._collection = MongoClientFactory.get_collection(
             mongo_client,
@@ -173,7 +174,7 @@ class AttemptRepository:
         return [ExerciseAttempt.model_validate(document) for document in documents]
 
 
-class ProfileRepository:
+class ProfileRepository(IProfileRepository):
     def __init__(self, mongo_client) -> None:
         self._collection = MongoClientFactory.get_collection(
             mongo_client,

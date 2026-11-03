@@ -1,156 +1,221 @@
-import json
-from typing import Annotated
+import asyncio
+from collections.abc import AsyncIterator
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
-from jwt_handler.value_objects import AccessTokenPayload
-from shared_models.interview.mode import InterviewMode, InterviewStartConfig
-
-from src.api.dependencies.entitlements import check_interview_quota_for_user, record_interview_started
-from src.api.dependencies.interview import InterviewManagerDep
-from src.api.dependencies.mongo import get_cv_analysis_repository
-from src.api.security import verify_ws_token
-from src.domain.exceptions.cv_not_ready_error import CVNotReadyError
-from src.domain.interfaces.mongo import IMongoRepository
-from src.domain.models.user_profile import UserProfile
-from src.logger import app_logger
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from pydantic import ValidationError
+from shared_models.assessment import CandidateMessage, InterviewerMessage, SessionCompleted, SessionEvent
 from shared_models.feature_flags.flags import feature_enabled
-from src.services.cv_data_resolver import CVDataResolver
-from src.services.voice import build_voice_stack
+
+from src.api.v1.schemas.interview_protocol import (
+    PROTOCOL_VERSION,
+    ClientCandidateMessage,
+    ClientHello,
+    ClientMessageAdapter,
+    ClientPing,
+    ErrorCode,
+    ServerError,
+    ServerInterviewerMessageCompleted,
+    ServerInterviewerMessageDelta,
+    ServerInterviewerMessageStarted,
+    ServerMessage,
+    ServerPong,
+    ServerReady,
+    ServerSessionCompleted,
+    ServerTranscriptEntry,
+)
+from src.app.container import AppContainer
+from src.application.services.interview_turn_service import MessageDelta, SessionOutput
+from src.config import settings
+from src.domain.entities.interview_connection import InterviewConnection
+from src.domain.exceptions.assessment_context_errors import (
+    AssessmentContextNotFoundError,
+    AssessmentContextUnavailableError,
+    AssessmentNotReadyError,
+)
+from src.domain.exceptions.attempt_token_error import InvalidAttemptTokenError
+from src.domain.exceptions.session_errors import NoPendingQuestionError, SessionBusyError, SessionCompletedError
+from src.logger import app_logger
 
 router = APIRouter(prefix="/interview", tags=["Interview"])
 
-CV_NOT_READY_CLOSE_CODE = 4001
+
+async def _send(websocket: WebSocket, message: ServerMessage) -> None:
+    await websocket.send_text(message.model_dump_json())
 
 
-def get_cv_data_resolver(
-    mongo_repository: Annotated[IMongoRepository, Depends(get_cv_analysis_repository)],
-) -> CVDataResolver:
-    return CVDataResolver(mongo_repository=mongo_repository)
+async def _reject(websocket: WebSocket, code: ErrorCode, message: str, close_code: int) -> None:
+    await _send(websocket, ServerError(code=code, message=message))
+    await websocket.close(code=close_code)
 
 
-@router.websocket("/ws/{user_id}")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    user_id: UUID,
-    interview_manager: InterviewManagerDep,
-    _: Annotated[AccessTokenPayload, Depends(verify_ws_token)],
-    cv_data_resolver: Annotated[CVDataResolver, Depends(get_cv_data_resolver)],
-    mode: str = Query(default="mixed"),
-    resume_session_id: str | None = Query(default=None),
-    company_preset: str | None = Query(default=None),
-    role_track: str | None = Query(default=None),
-    language: str = Query(default="en"),
-    voice_enabled: bool = Query(default=False),
-) -> None:
-    user = UserProfile(id=user_id)
-    user_id_str = str(user.id)
-
+def _parse_client_message(raw: str) -> ClientHello | ClientCandidateMessage | ClientPing | None:
     try:
-        await check_interview_quota_for_user(user_id_str)
-    except HTTPException as exc:
-        await websocket.accept()
-        await websocket.send_text(json.dumps({"type": "error", "code": "INTERVIEW_QUOTA_EXCEEDED", "message": exc.detail}))
-        await websocket.close(code=4402)
-        return
+        return ClientMessageAdapter.validate_json(raw)
+    except ValidationError:
+        return None
 
+
+async def _receive_hello(websocket: WebSocket) -> ClientHello | None:
     try:
-        resolution = await cv_data_resolver.resolve(user_id_str)
-    except CVNotReadyError as exc:
-        await websocket.accept()
-        await websocket.send_text(
-            json.dumps(
-                {
-                    "type": "error",
-                    "code": "CV_NOT_READY",
-                    "message": exc.message,
-                }
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=settings.interview_hello_timeout_seconds)
+    except TimeoutError:
+        await _reject(websocket, ErrorCode.INVALID_MESSAGE, "Hello message timed out", status.WS_1008_POLICY_VIOLATION)
+        return None
+
+    message = _parse_client_message(raw)
+    if not isinstance(message, ClientHello):
+        await _reject(websocket, ErrorCode.INVALID_MESSAGE, "Expected a hello message", status.WS_1008_POLICY_VIOLATION)
+        return None
+    if message.protocol_version != PROTOCOL_VERSION:
+        await _reject(
+            websocket,
+            ErrorCode.UNSUPPORTED_PROTOCOL_VERSION,
+            f"Supported protocol version is {PROTOCOL_VERSION}",
+            status.WS_1008_POLICY_VIOLATION,
+        )
+        return None
+    return message
+
+
+async def _open_connection(
+    websocket: WebSocket, hello: ClientHello, container: AppContainer
+) -> InterviewConnection | None:
+    try:
+        return await container.open_interview_connection_use_case(hello.token)
+    except InvalidAttemptTokenError:
+        await _reject(websocket, ErrorCode.UNAUTHORIZED, "Invalid interview token", status.WS_1008_POLICY_VIOLATION)
+    except AssessmentNotReadyError:
+        await _reject(
+            websocket, ErrorCode.ASSESSMENT_NOT_READY, "Assessment is not ready", status.WS_1008_POLICY_VIOLATION
+        )
+    except (AssessmentContextNotFoundError, AssessmentContextUnavailableError):
+        await _reject(
+            websocket, ErrorCode.ASSESSMENT_UNAVAILABLE, "Assessment is unavailable", status.WS_1011_INTERNAL_ERROR
+        )
+    return None
+
+
+async def _replay(websocket: WebSocket, events: list[SessionEvent], last_event_id: UUID | None) -> None:
+    known = {event.event_id for event in events}
+    skipping = last_event_id is not None and last_event_id in known
+    for event in events:
+        if skipping:
+            skipping = event.event_id != last_event_id
+            continue
+        if isinstance(event, InterviewerMessage | CandidateMessage):
+            role = "interviewer" if isinstance(event, InterviewerMessage) else "candidate"
+            await _send(
+                websocket,
+                ServerTranscriptEntry(
+                    event_id=event.event_id, seq=event.seq, role=role, text=event.text, occurred_at=event.occurred_at
+                ),
             )
+        elif isinstance(event, SessionCompleted):
+            await _send(websocket, ServerSessionCompleted(event_id=event.event_id, seq=event.seq))
+
+
+async def _stream(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -> None:
+    started: set[UUID] = set()
+    async for output in outputs:
+        if isinstance(output, MessageDelta):
+            if output.message_id not in started:
+                started.add(output.message_id)
+                await _send(
+                    websocket, ServerInterviewerMessageStarted(turn_id=output.turn_id, message_id=output.message_id)
+                )
+            await _send(
+                websocket,
+                ServerInterviewerMessageDelta(turn_id=output.turn_id, message_id=output.message_id, delta=output.delta),
+            )
+        elif isinstance(output, InterviewerMessage):
+            await _send(
+                websocket,
+                ServerInterviewerMessageCompleted(
+                    turn_id=output.turn_id,
+                    message_id=output.event_id,
+                    event_id=output.event_id,
+                    seq=output.seq,
+                    text=output.text,
+                ),
+            )
+        else:
+            await _send(websocket, ServerSessionCompleted(event_id=output.event_id, seq=output.seq))
+
+
+async def _stream_guarded(websocket: WebSocket, outputs: AsyncIterator[SessionOutput]) -> bool:
+    try:
+        await _stream(websocket, outputs)
+    except SessionBusyError:
+        await _send(websocket, ServerError(code=ErrorCode.SESSION_BUSY, message="Session is busy", retryable=True))
+    except SessionCompletedError:
+        await _send(websocket, ServerError(code=ErrorCode.SESSION_COMPLETED, message="Interview is completed"))
+    except NoPendingQuestionError:
+        await _send(websocket, ServerError(code=ErrorCode.INVALID_MESSAGE, message="No question is pending"))
+    except AssessmentNotReadyError:
+        await _reject(
+            websocket, ErrorCode.ASSESSMENT_NOT_READY, "Assessment is not ready", status.WS_1008_POLICY_VIOLATION
         )
-        await websocket.close(code=CV_NOT_READY_CLOSE_CODE)
+        return False
+    except WebSocketDisconnect:
+        raise
+    except Exception:
+        app_logger.exception("Interview turn failed")
+        await _send(
+            websocket,
+            ServerError(code=ErrorCode.INTERNAL_ERROR, message="The interview turn failed", retryable=True),
+        )
+    return True
+
+
+@router.websocket("/ws")
+async def interview_ws(websocket: WebSocket) -> None:
+    if not feature_enabled("EMPLOYER_ASSESSMENT_DEMO", False):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    if voice_enabled and not feature_enabled("VOICE_INTERVIEW", False):
-        voice_enabled = False
+    container: AppContainer = websocket.app.state.container
+    await websocket.accept()
+    hello = await _receive_hello(websocket)
+    if hello is None:
+        return
+    connection = await _open_connection(websocket, hello, container)
+    if connection is None:
+        return
 
-    try:
-        interview_mode = InterviewMode(mode)
-    except ValueError:
-        interview_mode = InterviewMode.MIXED
-
-    _stt, _tts = build_voice_stack()
-
-    start_config = InterviewStartConfig(
-        mode=interview_mode,
-        company_preset=company_preset,
-        role_track=role_track,
-        language=language,
-        voice_enabled=voice_enabled,
-    )
-
-    session_id = await interview_manager.start_interview(
+    template = connection.context.template
+    await _send(
         websocket,
-        user,
-        resolution.cv_data,
-        cv_correlation_id=resolution.correlation_id,
-        start_config=start_config,
-        resume_session_id=resume_session_id,
-    )
-    await record_interview_started(user_id)
-
-    await websocket.send_text(
-        json.dumps(
-            {
-                "type": "interview_started",
-                "user_id": user_id_str,
-                "session_id": session_id,
-                "cv_source": resolution.source,
-                "correlation_id": resolution.correlation_id,
-                "mode": interview_mode.value,
-                "voice_enabled": voice_enabled,
-            }
-        )
+        ServerReady(
+            attempt_id=connection.attempt_id,
+            language=template.language,
+            question_count=template.question_count,
+            duration_minutes=template.duration_minutes,
+            last_event_id=hello.last_event_id,
+        ),
     )
 
+    presence_token: str | None = None
     try:
+        presence_token = await container.register_interview_connection_use_case(connection)
+        await _replay(websocket, await container.list_interview_events_use_case(connection), hello.last_event_id)
+        if not await _stream_guarded(websocket, container.open_interview_session_use_case(connection)):
+            return
         while True:
-            data = await websocket.receive_text()
-
-            message_data = json.loads(data)
-            message_type = message_data.get("type", "message")
-
-            if message_type == "user_message":
-                content = message_data.get("content", "")
-                if content:
-                    await interview_manager.handle_user_message(session_id, content)
-                else:
-                    await websocket.send_text(json.dumps({"type": "error", "message": "Message content is required"}))
-
-            elif message_type == "start_config":
-                # Allow late JD attachment for personalization context.
-                jd = message_data.get("job_description")
-                if jd and hasattr(interview_manager, "attach_job_description"):
-                    await interview_manager.attach_job_description(session_id, jd)
-
-            elif message_type == "voice_chunk":
-                # Voice STT bridge: client sends transcribed text or base64 audio metadata.
-                transcript = message_data.get("transcript") or message_data.get("content", "")
-                if transcript:
-                    await interview_manager.handle_user_message(session_id, transcript)
-
-            elif message_type == "end_interview":
-                await interview_manager.end_interview(session_id)
-                break
-
-            elif message_type == "get_status":
-                status_payload = interview_manager.get_interview_status(session_id)
-                if status_payload:
-                    await websocket.send_text(json.dumps({"type": "interview_status", "status": status_payload}))
-
+            message = _parse_client_message(await websocket.receive_text())
+            if isinstance(message, ClientPing):
+                await _send(websocket, ServerPong())
+            elif isinstance(message, ClientCandidateMessage):
+                outputs = container.handle_candidate_answer_use_case(connection, message.turn_id, message.text)
+                if not await _stream_guarded(websocket, outputs):
+                    return
             else:
-                content = message_data.get("content", data)
-                await interview_manager.handle_user_message(session_id, content)
-
+                await _send(websocket, ServerError(code=ErrorCode.INVALID_MESSAGE, message="Unexpected message"))
     except WebSocketDisconnect:
-        app_logger.info("WebSocket disconnected for session %s", session_id)
-        await interview_manager.disconnect_user(session_id)
+        pass
+    finally:
+        try:
+            if presence_token is not None:
+                await container.pause_interview_session_use_case(connection, presence_token)
+        except Exception:
+            app_logger.exception("Pausing the interview session failed")

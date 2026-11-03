@@ -31,7 +31,7 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 | Component | Type | Responsibility |
 |-----------|------|----------------|
 | [user-management-service](user-management-service) | HTTP (FastAPI) | Users, JWT auth (RS256), OAuth (Google/GitHub), billing entitlements, GDPR export/delete, refresh-token rotation with Redis, CV upload + RabbitMQ jobs |
-| [interview-service](interview-service) | HTTP + WebSocket | LangGraph mock interviews (modes, resume, transcripts), JD match, coding sandbox, question bank / learning paths |
+| [interview-service](interview-service) | HTTP + WebSocket | Pydantic AI interviews by a recruiter specification: event-journal sessions, reports with drill-down, candidate feedback, template drafts, data erasure |
 | [practice-service](practice-service) | HTTP + workers | Personalized practice plans, grading (MCQ/open/flashcard/code_review/scenario), progress, in-app notifications |
 | [analyze-service](analyze-service) | Worker | Consume **`cv-analyze-stream`** → S3 PDF → **Docling** extract → LLM → `CVData` → MongoDB → **`cv-analysis-results`** |
 | [notification-service](notification-service) | Worker | Transactional email via AWS SES (reset password, verify email, plan ready, digests) |
@@ -49,12 +49,12 @@ High-level view of the platform (API gateway, services, RabbitMQ, databases, and
 
 **Synchronous paths.** Clients talk HTTP to **User Management** / **Practice** and HTTP/WebSocket to **Interview** (nginx sticky sessions for WS).
 
-**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`** (Docling + LLM). **Notification** consumes email streams. **Practice** workers consume interview-completed and practice-plan jobs and publish **`practice-plan-ready-stream`**.
+**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`** (Docling + LLM). **Notification** consumes email streams. **Practice** workers consume practice-plan jobs and publish **`practice-plan-ready-stream`**. **Interview** publishes **`assessment-completed`**, consumed by user-management.
 
 | Kind | Service | Typical command | Role |
 |------|---------|-----------------|------|
 | HTTP | [user-management-service](user-management-service) | `uvicorn src.main:app` | Auth, users, billing, privacy |
-| HTTP | [interview-service](interview-service) | `uvicorn src.main:app` | WebSocket interview + coding/JD APIs |
+| HTTP | [interview-service](interview-service) | `uvicorn src.main:app` | Candidate interview WebSocket + internal report, feedback, draft and erasure APIs |
 | HTTP | [practice-service](practice-service) | `uvicorn src.main:app` | Practice plans + notifications inbox |
 | Worker | [analyze-service](analyze-service) | `python -m src.main` | CV analysis pipeline (Docling) |
 | Worker | [notification-service](notification-service) | `python -m src.main` | Transactional email |
@@ -76,7 +76,7 @@ High-level view of the platform (API gateway, services, RabbitMQ, databases, and
 | Path | Role |
 |------|------|
 | [user-management-service/](user-management-service/) | FastAPI app, domain/application/infrastructure layers, Alembic migrations, aio-pika producer for **`cv-analyze-stream`** and **`reset-password-stream`**, Redis refresh-token rotation and reuse detection |
-| [interview-service/](interview-service/) | FastAPI router, LangGraph [`workflow`](interview-service/src/agent/workflow.py), LLM factory ([`llm.py`](interview-service/src/agent/llm.py)), static [`interview_client.html`](interview-service/src/static/interview_client.html) |
+| [interview-service/](interview-service/) | FastAPI app, deterministic [`InterviewEngine`](interview-service/src/domain/interview/engine.py), Pydantic AI agents in [`infrastructure/ai`](interview-service/src/infrastructure/ai), Mongo event journal |
 | [analyze-service/](analyze-service/) | [`dependency-injector`](analyze-service/src/containers/container.py) composition root, aio-pika consumer on **`cv-analyze-stream`**, producer to **`cv-analysis-results`**, S3 + Mongo + LangChain CV parser |
 | [notification-service/](notification-service/) | Blocking **pika** consumer on **`reset-password-stream`**, [`ResetPasswordUseCase`](notification-service/src/application/use_cases/reset_password_use_case.py), Mongo repository + SES adapter |
 | [libs/jwt_handler/](libs/jwt_handler/) | Reusable JWT handling consumed by user-management ([`pyproject.toml`](user-management-service/pyproject.toml) Git or path dependency) |
@@ -164,33 +164,23 @@ Ignores `.env`, `venv/`, `.idea/`, `__pycache__/`. Service-specific artifacts (f
 
 ### Interview Service
 
-**Entrypoints.** [`src/main.py`](interview-service/src/main.py): mounts [`/api/v1`](interview-service/src/api/v1/router.py) and static files at **`/static`**; root `GET /` returns JSON pointing to **`/static/interview_client.html`**.
+The service runs recruiter interviews from an interview specification (the vacancy template, version 2) and builds a report per focus area. Order and budgets are decided by code; models are used only for language.
 
-**Configuration.** [`src/config.py`](interview-service/src/config.py): YAML-backed logging (`config.yaml` → `logger` key), LLM settings via Pydantic Settings:
+**Entrypoints.** [`src/main.py`](interview-service/src/main.py) mounts the candidate WebSocket and the internal APIs; `/health` and `/health/ready` (Redis and MongoDB checks) serve probes.
 
-- **`LLM_PROVIDER`** — `openai` (default), `openrouter`, or `google` ([`.env.example`](interview-service/.env.example)).
-- **OpenAI** — `OPENAI_API_KEY`, `OPENAI_LLM__MODEL` (default `gpt-4o-mini`), `OPENAI_LLM__TEMPERATURE`.
-- **OpenRouter** — `OPENROUTER_API_KEY`, `OPENROUTER_LLM__MODEL`, `OPENROUTER_LLM__API_BASE` (default `https://openrouter.ai/api/v1`), `OPENROUTER_LLM__TEMPERATURE`.
-- **Google Gemini** — `GOOGLE_API_KEY`, `GOOGLE_LLM__MODEL` (default `gemini-2.0-flash`), `GOOGLE_LLM__TEMPERATURE`.
-- **`INTERVIEW_LLM__TEMPERATURE`** — optional per-service temperature override.
+**Candidate interview.** WebSocket **`/api/v1/interview/ws`** ([`endpoints.py`](interview-service/src/api/v1/endpoints/interview.py), protocol in [`protocol.py`](interview-service/src/api/v1/schemas/interview_protocol.py)).
 
-**LLM wiring.** [`src/agent/llm.py`](interview-service/src/agent/llm.py): `LLMFactory.create_llm()` selects the provider from `LLM_PROVIDER` and returns a LangChain `BaseChatModel` (`ChatOpenAI` for OpenAI/OpenRouter, `ChatGoogleGenerativeAI` for Google).
+- The first client message is `hello` with `protocol_version`, the candidate interview `token` (issued by user-management for a ready attempt) and an optional `last_event_id` for resuming.
+- Client messages: `hello`, `candidate_message`, `ping`. Server messages: `ready`, `transcript_entry`, `interviewer_message_started` / `_delta` / `_completed`, `session_completed`, `pong`, `error`.
+- The attempt id comes from the token. The context is read from user-management (`/api/internal/assessment-attempts/{id}/context`).
 
-**Agent graph.** [`create_interview_workflow()`](interview-service/src/agent/workflow.py): LangGraph `StateGraph` over [`InterviewState`](interview-service/src/domain/models/interview_state.py). Nodes include greeting, soft/hard question askers, small talk, wrap-up, question routing, and answer evaluation. Conditional edges:
+**Engine.** [`InterviewEngine`](interview-service/src/domain/interview/engine.py) picks the next focus area from evidence gaps and the question and time budgets (paused time excluded). An `evaluator` agent returns structured evidence whose quotes are verified in code, an `interviewer` agent streams the next message. Sessions are an append-only Mongo journal (`interview_events`) guarded by a Redis lock with idempotent turn ids; completion is stored in an outbox and published as `AssessmentCompleted`.
 
-- `section_router` — drives high-level stage transitions (including end).
-- `question_router_decision` — async LLM classification (`SMALLTALK` vs continuing soft/hard questioning using [`QUESTION_ROUTER_DECISION_PROMPT`](interview-service/src/agent/prompts/question_router_decision.py)).
+**Reports.** Verdicts and confidence are computed in code ([`scoring.py`](libs/shared_models/shared_models/assessment/scoring.py)); an assessment agent writes only the texts. Internal APIs under `/api/internal/` (guarded by `X-Internal-Service-Token`, never exposed by the gateway): `reports`, `feedback`, `spec-drafts`, `erasure`.
 
-**Checkpointing** is LangGraph-compatible and configurable: lean defaults for local demos, durable backends where multiple instances share interview state.
+**Configuration.** [`src/config.py`](interview-service/src/config.py). Models per role are `provider:model` lists: `INTERVIEW_EVALUATOR_MODELS`, `INTERVIEW_INTERVIEWER_MODELS`, `INTERVIEW_REPORT_MODELS`, `INTERVIEW_SPEC_MODELS`, `INTERVIEW_FEEDBACK_MODELS` (the provider key, for example `OPENAI_API_KEY`, is read from the environment). See [`.env.example`](interview-service/.env.example).
 
-**WebSocket contract.** [`websocket_endpoint`](interview-service/src/api/v1/endpoints/interview.py) at **`/api/v1/interview/ws/{user_id}`** delegates to [`InterviewConnectionManager`](interview-service/src/api/v1/managers/interview_manager.py).
-
-- Client JSON **`type`**: `user_message` (requires `content`), `end_interview`, `get_status`; unknown types fall back to forwarding `content` as user text.
-- Server JSON examples: `interview_started`, `agent_message` (includes `stage`), `interview_status`, `interview_complete`, `error`.
-
-**Reference demo vs production profile.** [`SAMPLE_CV`](interview-service/src/agent/data/sample_data.py) backs the static demo. Production deployments bind **`user_id`** and CV context to authenticated sessions and structured outputs from **Analyze** (for example documents keyed by user or correlation id), so the agent tailors dialogue to the candidate’s profile.
-
-**Dependencies.** [`interview-service/pyproject.toml`](interview-service/pyproject.toml): FastAPI with websockets, LangGraph + SQLite extras, LangChain, LangChain OpenAI, LangChain Google GenAI (optional provider), checkpoint SQLite, pydantic-settings.
+**Dependencies.** [`interview-service/pyproject.toml`](interview-service/pyproject.toml): FastAPI, Pydantic AI, Motor, Redis, aio-pika, httpx, pydantic-settings.
 
 ---
 
@@ -200,7 +190,7 @@ Ignores `.env`, `venv/`, `.idea/`, `__pycache__/`. Service-specific artifacts (f
 
 **Configuration.** [`src/config.py`](analyze-service/src/config.py): **`S3_*`**, **`RABBITMQ_*`** (inbound **`cv-analyze-stream`**, results **`cv-analysis-results`**), **`MONGODB_*`** (includes **`cv_analysis_collection_name`**), and shared LLM settings (`LLM_PROVIDER`, provider-specific keys/models, **`ANALYZE_LLM__TEMPERATURE`** default `0.2`). Logging can be driven from [`config.yaml`](analyze-service/config.yaml) via the container’s `dictConfig` resource.
 
-**LLM wiring.** [`src/agent/llm.py`](analyze-service/src/agent/llm.py): `LLMFactory.create_llm()` uses the same `LLM_PROVIDER` switch as interview-service; [`CVAnalyzer`](analyze-service/src/agent/services/cv_analyzer.py) calls structured output via `with_structured_output(CVData)`.
+**LLM wiring.** [`src/agent/llm.py`](analyze-service/src/agent/llm.py): `LLMFactory.create_llm()` uses the `LLM_PROVIDER` switch; [`CVAnalyzer`](analyze-service/src/agent/services/cv_analyzer.py) calls structured output via `with_structured_output(CVData)`.
 
 **Pipeline.** [`RabbitMQConsumer`](analyze-service/src/adapters/inbound/rabbitmq_consumer.py):
 

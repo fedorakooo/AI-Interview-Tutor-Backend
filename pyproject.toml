@@ -23,7 +23,6 @@ target-version = "py312"
 line-length = 120
 exclude = [
     "user-management-service/src/migrations",
-    "interview-service/src/agent/prompts",
     "analyze-service/src/agent/prompts"
 ]
 fix = true

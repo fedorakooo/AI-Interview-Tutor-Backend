@@ -7,7 +7,7 @@ import time
 from aio_pika import IncomingMessage, connect_robust
 from pydantic import ValidationError
 from shared_models.messaging.retry_policy import MAX_RETRIES, MessageRetryPolicy, get_retry_count
-from shared_models.practice.messaging import InterviewCompletedEvent, PracticePlanJobMessage, PracticePlanReadyEvent
+from shared_models.practice.messaging import PracticePlanJobMessage, PracticePlanReadyEvent
 from src.api.v1.endpoints.notifications import push_notification
 from src.config import settings
 from src.domain.exceptions.practice_errors import PlanGenerationFailedError, PlanNotFoundError
@@ -35,12 +35,10 @@ class PracticeConsumers:
     def __init__(
         self,
         generate_plan_use_case,
-        handle_interview_completed_use_case,
         retry_policy: MessageRetryPolicy | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self._generate_plan = generate_plan_use_case
-        self._handle_interview = handle_interview_completed_use_case
         self._retry_policy = retry_policy or MessageRetryPolicy()
         self._logger = logger or app_logger
         self._connection = None
@@ -72,15 +70,7 @@ class PracticeConsumers:
             plan_dlq = await channel.declare_queue(
                 settings.rabbitmq_settings.practice_plan_dlq_queue_name, durable=True
             )
-            interview_dlq = await channel.declare_queue(
-                settings.rabbitmq_settings.interview_completed_dlq_queue_name,
-                durable=True,
-            )
             plan_queue = await channel.declare_queue(settings.rabbitmq_settings.practice_plan_queue_name, durable=True)
-            interview_queue = await channel.declare_queue(
-                settings.rabbitmq_settings.interview_completed_queue_name,
-                durable=True,
-            )
             plan_ready_queue = await channel.declare_queue(
                 settings.rabbitmq_settings.practice_plan_ready_queue_name,
                 durable=True,
@@ -89,14 +79,6 @@ class PracticeConsumers:
             await plan_queue.consume(
                 lambda message: self._on_plan_job(
                     message, channel, plan_dlq.name, settings.rabbitmq_settings.practice_plan_queue_name
-                )
-            )
-            await interview_queue.consume(
-                lambda message: self._on_interview_completed(
-                    message,
-                    channel,
-                    interview_dlq.name,
-                    settings.rabbitmq_settings.interview_completed_queue_name,
                 )
             )
             await plan_ready_queue.consume(self._on_plan_ready)
@@ -126,34 +108,6 @@ class PracticeConsumers:
             await message.ack()
         except Exception:
             self._logger.exception("Plan job processing failed")
-            if retry_count < MAX_RETRIES:
-                await self._retry_policy.republish_with_retry(channel, message, retry_count + 1)
-            else:
-                await self._send_dlq(channel, dlq_name, message, queue_name, retry_count, "unknown_error")
-            await message.ack()
-
-    async def _on_interview_completed(
-        self,
-        message: IncomingMessage,
-        channel,
-        dlq_name: str,
-        queue_name: str,
-    ) -> None:
-        retry_count = get_retry_count(message.headers)
-        try:
-            payload = json.loads(message.body.decode())
-            event = InterviewCompletedEvent.model_validate(payload)
-            await self._handle_interview.execute(event)
-            await message.ack()
-        except json.JSONDecodeError:
-            await self._send_dlq(channel, dlq_name, message, queue_name, retry_count, "invalid_json")
-            await message.ack()
-        except ValidationError as exc:
-            self._logger.error("Invalid interview completed payload: %s", exc)
-            await self._send_dlq(channel, dlq_name, message, queue_name, retry_count, "validation_error")
-            await message.ack()
-        except Exception:
-            self._logger.exception("Interview completed processing failed")
             if retry_count < MAX_RETRIES:
                 await self._retry_policy.republish_with_retry(channel, message, retry_count + 1)
             else:
