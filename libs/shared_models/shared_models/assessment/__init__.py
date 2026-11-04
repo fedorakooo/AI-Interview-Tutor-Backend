@@ -38,21 +38,31 @@ from shared_models.assessment.session_events import (
     SessionStarted,
 )
 from shared_models.assessment.views import (
+    AssessmentCoverageView,
     AssessmentOverview,
+    EvidenceView,
     ErasureRequest,
     ErasureResult,
     FeedbackEditRequest,
     FeedbackView,
+    FocusAssessmentView,
     FocusDetail,
     FocusOverview,
+    QuoteView,
     RedFlagOverview,
+    ReviewEntryView,
     ReviewRequest,
     TemplateDraftRequest,
     TimelineEntry,
 )
 
 __all__ = [
+    "AssessmentCoverageView",
     "AssessmentOverview",
+    "EvidenceView",
+    "FocusAssessmentView",
+    "QuoteView",
+    "ReviewEntryView",
     "ErasureRequest",
     "ErasureResult",
     "FeedbackEditRequest",
