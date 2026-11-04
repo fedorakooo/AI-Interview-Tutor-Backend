@@ -86,15 +86,9 @@ class TestCVAnalysisResultMessage:
 
 
 class TestCVData:
-    def test_coerces_legacy_string_skills(self) -> None:
-        cv_data = CVData.model_validate(
-            {
-                "user_name": "Jane Doe",
-                "skills": ["Python", "FastAPI"],
-            }
-        )
-
-        assert [skill.name for skill in cv_data.skills or []] == ["Python", "FastAPI"]
+    def test_rejects_string_skills(self) -> None:
+        with pytest.raises(ValidationError):
+            CVData.model_validate({"user_name": "Jane Doe", "skills": ["Python", "FastAPI"]})
 
     def test_accepts_structured_skills(self) -> None:
         cv_data = CVData.model_validate(
