@@ -10,6 +10,7 @@ from src.application.services.cv_loader import CvLoader
 from src.domain.entities.interview_connection import InterviewConnection
 from src.domain.entities.session_state import SessionState
 from src.domain.enums.message_kind import MessageKind
+from src.domain.events.candidate_message import CandidateMessage
 from src.domain.events.interviewer_message import InterviewerMessage
 from src.domain.events.session_completed import SessionCompleted
 from src.domain.events.session_event import SessionEvent
@@ -49,6 +50,12 @@ class InterviewerTurn:
         template = connection.context.template
         state = JournalFolder.fold(events)
         action = InterviewPlanner(template).next_action(state, state.active_elapsed(self._clock()))
+        closing = self._unfinished_closing(events) if isinstance(action, Complete) else None
+        if closing is not None:
+            yield SessionOutputMapper.message_completed(closing)
+            async for output in self._complete(connection, events, state.session_id, action):
+                yield output
+            return
         cv = await self._cv_loader.load(connection) if state.cv_attached else None
         request = self._request(connection, state, action, cv)
 
@@ -77,17 +84,32 @@ class InterviewerTurn:
         yield SessionOutputMapper.message_completed(message)
 
         if isinstance(action, Complete):
-            completed = SessionCompleted(
-                event_id=uuid4(),
-                session_id=state.session_id,
-                seq=message.seq + 1,
-                occurred_at=self._clock(),
-                reason=action.reason,
-            )
-            await self._event_repository.append(completed)
-            events.append(completed)
-            yield SessionOutputMapper.session_finished(completed)
-            await self._completion_publisher.publish(connection, state.session_id)
+            async for output in self._complete(connection, events, state.session_id, action):
+                yield output
+
+    async def _complete(
+        self, connection: InterviewConnection, events: list[SessionEvent], session_id: str, action: Complete
+    ) -> AsyncIterator[SessionOutput]:
+        completed = SessionCompleted(
+            event_id=uuid4(),
+            session_id=session_id,
+            seq=events[-1].seq + 1,
+            occurred_at=self._clock(),
+            reason=action.reason,
+        )
+        await self._event_repository.append(completed)
+        events.append(completed)
+        yield SessionOutputMapper.session_finished(completed)
+        await self._completion_publisher.publish(connection, session_id)
+
+    @staticmethod
+    def _unfinished_closing(events: list[SessionEvent]) -> InterviewerMessage | None:
+        last_message = next(
+            (event for event in reversed(events) if isinstance(event, (InterviewerMessage, CandidateMessage))), None
+        )
+        if isinstance(last_message, InterviewerMessage) and last_message.kind == MessageKind.CLOSING:
+            return last_message
+        return None
 
     @staticmethod
     def _message_kind(action: NextAction) -> MessageKind:

@@ -500,3 +500,22 @@ async def test_transcript_lists_visible_entries_after_the_last_known_event() -> 
     assert [entry.role for entry in entries] == ["interviewer", "candidate", "interviewer"]
     assert later == []
     assert await service.transcript(harness.connection, uuid4()) == entries
+
+
+async def test_reopening_after_a_crash_between_closing_and_completion_completes_without_a_second_closing() -> None:
+    harness = Harness()
+    await run_to_completion(harness)
+    events = harness.journal.events[harness.session_id]
+    closing = events[-2]
+    assert isinstance(closing, InterviewerMessage) and closing.kind == MessageKind.CLOSING
+    events.pop()
+    harness.publisher.events.clear()
+
+    outputs = await harness.open()
+
+    journal = harness.journal.events[harness.session_id]
+    assert [e.kind for e in journal if isinstance(e, InterviewerMessage)].count(MessageKind.CLOSING) == 1
+    assert isinstance(outputs[0], MessageCompleted) and outputs[0].event_id == closing.event_id
+    assert isinstance(outputs[-1], SessionFinished)
+    assert (await harness.state()).status == SessionStatus.COMPLETED
+    assert len(harness.publisher.events) == 1
