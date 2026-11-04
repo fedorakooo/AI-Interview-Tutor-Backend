@@ -24,7 +24,6 @@ from shared_models.assessment.report import (
     RedFlagFinding,
     ReviewEntry,
 )
-from shared_models.assessment.scoring import compute_focus_verdict
 from shared_models.assessment.session_events import (
     CandidateMessage,
     EvidenceRecorded,
@@ -38,8 +37,6 @@ from shared_models.assessment.session_events import (
     SessionPaused,
     SessionStarted,
 )
-from shared_models.assessment.session_state import SessionState, fold_events
-from shared_models.assessment.verification import InconsistentAssessmentError, verify_assessment
 from shared_models.assessment.views import (
     AssessmentOverview,
     ErasureRequest,
@@ -52,8 +49,6 @@ from shared_models.assessment.views import (
     ReviewRequest,
     TemplateDraftRequest,
     TimelineEntry,
-    build_focus_detail,
-    build_overview,
 )
 
 __all__ = [
@@ -68,9 +63,6 @@ __all__ = [
     "ReviewRequest",
     "TemplateDraftRequest",
     "TimelineEntry",
-    "build_focus_detail",
-    "build_overview",
-    "compute_focus_verdict",
     "Assessment",
     "AssessmentCompleted",
     "AssessmentContext",
@@ -90,7 +82,6 @@ __all__ = [
     "FocusCoverageChanged",
     "FocusMethod",
     "HumanDecisionType",
-    "InconsistentAssessmentError",
     "InterviewerMessage",
     "InvitationStatus",
     "QuoteRef",
@@ -104,11 +95,8 @@ __all__ = [
     "SessionFailed",
     "SessionPaused",
     "SessionStarted",
-    "SessionState",
     "TemplateStatus",
     "VacancyStatus",
     "Verdict",
-    "fold_events",
     "upcast_template_v1",
-    "verify_assessment",
 ]

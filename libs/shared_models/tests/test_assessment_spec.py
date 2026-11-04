@@ -8,8 +8,6 @@ from shared_models.assessment import (
     AssessmentContext,
     AssessmentTemplateSnapshot,
     CvPolicy,
-    EvidenceRecorded,
-    InconsistentAssessmentError,
     QuoteRef,
     ReviewEntry,
     RubricCriterion,
@@ -17,8 +15,6 @@ from shared_models.assessment import (
     SessionEventLogAdapter,
     SessionStarted,
     Verdict,
-    fold_events,
-    verify_assessment,
 )
 from shared_models.assessment.mocks import (
     mock_assessment,
@@ -26,8 +22,6 @@ from shared_models.assessment.mocks import (
     mock_session_events,
     mock_template,
 )
-from shared_models.assessment.session_events import CandidateMessage, CompletionReason
-from shared_models.assessment.session_state import InvalidEventLogError, SessionStatus
 
 POLICIES = [CvPolicy.REQUIRED, CvPolicy.NONE]
 
@@ -191,135 +185,10 @@ class TestAssessmentContext:
             AssessmentContext.model_validate(payload)
 
 
-@pytest.mark.parametrize("policy", POLICIES)
-class TestSessionFold:
-    def test_fold_of_completed_mock_session(self, policy: CvPolicy) -> None:
-        state = fold_events(mock_session_events(policy))
-
-        assert state.status == SessionStatus.COMPLETED
-        assert state.completion_reason == CompletionReason.QUESTION_BUDGET
-        assert state.questions_asked == mock_template(policy).question_count
-        assert state.cv_attached is (policy != CvPolicy.NONE)
-        assert len(state.evidence) == 9
-        assert state.coverage["testing"].evidence_count == 1
-
-    def test_seq_is_monotonic(self, policy: CvPolicy) -> None:
-        seqs = [event.seq for event in mock_session_events(policy)]
-
-        assert seqs == sorted(set(seqs))
-
-    def test_intro_turn_is_not_counted_and_not_evidence(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        state = fold_events(events)
-        intro = [m for m in state.messages.values() if m.kind == "intro"]
-
-        assert len(intro) == (1 if policy == CvPolicy.NONE else 0)
-        assert all(item.question_seq not in {m.seq for m in intro} for item in state.evidence)
-
-    def test_rejects_events_after_terminal(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        late = events[-1].model_copy(update={"seq": events[-1].seq + 1, "event_id": uuid4()})
-
-        with pytest.raises(InvalidEventLogError, match="terminal"):
-            fold_events([*events, late])
-
-    def test_rejects_non_monotonic_seq(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        events[3] = events[3].model_copy(update={"seq": events[2].seq})
-
-        with pytest.raises(InvalidEventLogError, match="monotonically"):
-            fold_events(events)
-
-    def test_event_log_must_start_with_session_started(self, policy: CvPolicy) -> None:
-        with pytest.raises(InvalidEventLogError, match="start with SessionStarted"):
-            fold_events(mock_session_events(policy)[1:])
-
-
-@pytest.mark.parametrize("policy", POLICIES)
-class TestQuoteVerification:
-    def test_every_quote_matches_its_message(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        messages = {event.seq: event.text for event in events if isinstance(event, CandidateMessage)}
-        quotes = [q for event in events if isinstance(event, EvidenceRecorded) for q in event.evidence.quotes]
-
-        assert quotes
-        assert all(messages[q.event_seq][q.start : q.end] == q.text for q in quotes)
-
-    def test_evidence_with_unverifiable_quote_is_rejected(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        index = next(i for i, event in enumerate(events) if isinstance(event, EvidenceRecorded))
-        original = events[index].evidence
-        quote = original.quotes[0]
-        forged = QuoteRef(event_seq=quote.event_seq, start=quote.start + 1, end=quote.end + 1, text=quote.text)
-        events[index] = events[index].model_copy(update={"evidence": original.model_copy(update={"quotes": [forged]})})
-
-        with pytest.raises(InvalidEventLogError, match="does not match"):
-            fold_events(events)
-
-    def test_quote_must_reference_candidate_message(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        index = next(i for i, event in enumerate(events) if isinstance(event, EvidenceRecorded))
-        original = events[index].evidence
-        interviewer_seq = original.question_seq
-        quote = QuoteRef(event_seq=interviewer_seq, start=0, end=3, text="abc")
-        events[index] = events[index].model_copy(update={"evidence": original.model_copy(update={"quotes": [quote]})})
-
-        with pytest.raises(InvalidEventLogError, match="not a candidate message"):
-            fold_events(events)
-
-    def test_quote_model_rejects_inconsistent_span(self, policy: CvPolicy) -> None:
+class TestQuoteRef:
+    def test_rejects_an_inconsistent_span(self) -> None:
         with pytest.raises(ValidationError):
             QuoteRef(event_seq=1, start=0, end=5, text="abc")
-
-
-@pytest.mark.parametrize("policy", POLICIES)
-class TestAssessmentConsistency:
-    def test_mock_assessment_matches_template_and_journal(self, policy: CvPolicy) -> None:
-        verify_assessment(mock_assessment(policy), mock_template(policy), mock_session_events(policy))
-
-    def test_not_assessed_differs_from_weak(self, policy: CvPolicy) -> None:
-        verdicts = {item.focus_id: item.verdict for item in mock_assessment(policy).focus}
-
-        assert verdicts["testing"] == Verdict.NOT_ASSESSED
-        assert verdicts["async_io"] == Verdict.WEAK
-
-    def test_unknown_focus_id_is_rejected(self, policy: CvPolicy) -> None:
-        assessment = mock_assessment(policy)
-        assessment.focus[0] = assessment.focus[0].model_copy(update={"focus_id": "ghost"})
-
-        with pytest.raises(InconsistentAssessmentError, match="exactly once"):
-            verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
-
-    def test_evidence_missing_from_journal_is_rejected(self, policy: CvPolicy) -> None:
-        assessment = mock_assessment(policy)
-        item = assessment.focus[0].evidence[0]
-        assessment.focus[0].evidence[0] = item.model_copy(update={"evidence_id": uuid4()})
-
-        with pytest.raises(InconsistentAssessmentError, match="not in the journal"):
-            verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
-
-    def test_event_seq_out_of_journal_is_rejected(self, policy: CvPolicy) -> None:
-        assessment = mock_assessment(policy)
-        finding = assessment.red_flags[0]
-        quote = finding.quotes[0].model_copy(update={"event_seq": 9999})
-        assessment.red_flags[0] = finding.model_copy(update={"quotes": [quote]})
-
-        with pytest.raises(InconsistentAssessmentError, match="not a candidate message"):
-            verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
-
-    def test_verdict_must_match_the_computed_result(self, policy: CvPolicy) -> None:
-        assessment = mock_assessment(policy)
-        testing = next(i for i, item in enumerate(assessment.focus) if item.focus_id == "testing")
-        assessment.focus[testing] = assessment.focus[testing].model_copy(update={"verdict": Verdict.WEAK})
-
-        with pytest.raises(InconsistentAssessmentError, match="computed result"):
-            verify_assessment(assessment, mock_template(policy), mock_session_events(policy))
-
-    def test_incomplete_session_is_rejected(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-
-        with pytest.raises(InconsistentAssessmentError, match="completed session"):
-            verify_assessment(mock_assessment(policy), mock_template(policy), events[:-2])
 
 
 class TestReview:
@@ -373,8 +242,3 @@ class TestJsonRoundTrip:
         assert restored == events
         assert isinstance(restored[0], SessionStarted)
         assert isinstance(restored[-1], SessionCompleted)
-
-    def test_folded_state(self, policy: CvPolicy) -> None:
-        state = fold_events(mock_session_events(policy))
-
-        assert _round_trip(state) == state

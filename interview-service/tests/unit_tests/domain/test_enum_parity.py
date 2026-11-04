@@ -1,5 +1,5 @@
 import pytest
-from shared_models.assessment import contracts, evidence, session_events, session_state
+from shared_models.assessment import contracts, evidence, session_events
 from src.domain.enums.assessment_mode import AssessmentMode
 from src.domain.enums.completion_reason import CompletionReason
 from src.domain.enums.coverage_status import CoverageStatus
@@ -8,7 +8,6 @@ from src.domain.enums.evidence_level import EvidenceLevel
 from src.domain.enums.focus_method import FocusMethod
 from src.domain.enums.message_kind import MessageKind
 from src.domain.enums.pause_reason import PauseReason
-from src.domain.enums.session_status import SessionStatus
 from src.domain.enums.verdict import Verdict
 
 PAIRS = [
@@ -21,7 +20,6 @@ PAIRS = [
     (CoverageStatus, session_events.CoverageStatus),
     (CompletionReason, session_events.CompletionReason),
     (PauseReason, session_events.PauseReason),
-    (SessionStatus, session_state.SessionStatus),
 ]
 
 
