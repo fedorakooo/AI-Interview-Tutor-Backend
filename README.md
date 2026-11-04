@@ -14,7 +14,6 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 - [Services](#services)
   - [User Management](#user-management-service)
   - [Interview](#interview-service)
-  - [Practice](#practice-service)
   - [Analyze](#analyze-service)
   - [Notification](#notification-service)
 - [Observability, billing, privacy](#observability-billing-privacy)
@@ -32,7 +31,6 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 |-----------|------|----------------|
 | [user-management-service](user-management-service) | HTTP (FastAPI) | Users, JWT auth (RS256), OAuth (Google/GitHub), billing entitlements, GDPR export/delete, refresh-token rotation with Redis, CV upload + RabbitMQ jobs |
 | [interview-service](interview-service) | HTTP + WebSocket | LangGraph mock interviews (modes, resume, transcripts), JD match, coding sandbox, question bank / learning paths |
-| [practice-service](practice-service) | HTTP + workers | Personalized practice plans, grading (MCQ/open/flashcard/code_review/scenario), progress, in-app notifications |
 | [analyze-service](analyze-service) | Worker | Consume **`cv-analyze-stream`** → S3 PDF → **Docling** extract → LLM → `CVData` → MongoDB → **`cv-analysis-results`** |
 | [notification-service](notification-service) | Worker | Transactional email via AWS SES (reset password, verify email, plan ready, digests) |
 | [libs/jwt_handler](libs/jwt_handler) | Python package | JWT encode/decode, token DTOs |
@@ -43,19 +41,18 @@ Backend services for an AI-assisted technical interview platform: REST authentic
 
 ## Architecture
 
-High-level view of the platform (API gateway, services, RabbitMQ, databases, and S3). This repository ships **User Management**, **Interview**, **Practice**, **Analyze**, and **Notification** backends; the frontend lives in a separate Next.js repo.
+High-level view of the platform (API gateway, services, RabbitMQ, databases, and S3). This repository ships **User Management**, **Interview**, **Analyze**, and **Notification** backends; the frontend lives in a separate Next.js repo.
 
 ![Architecture overview](docs/architecture-overview.png)
 
-**Synchronous paths.** Clients talk HTTP to **User Management** / **Practice** and HTTP/WebSocket to **Interview** (nginx sticky sessions for WS).
+**Synchronous paths.** Clients talk HTTP to **User Management** and HTTP/WebSocket to **Interview** (nginx sticky sessions for WS).
 
-**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`** (Docling + LLM). **Notification** consumes email streams. **Practice** workers consume interview-completed and practice-plan jobs and publish **`practice-plan-ready-stream`**.
+**Asynchronous paths.** **Analyze** consumes **`cv-analyze-stream`** (Docling + LLM). **Notification** consumes email streams.
 
 | Kind | Service | Typical command | Role |
 |------|---------|-----------------|------|
 | HTTP | [user-management-service](user-management-service) | `uvicorn src.main:app` | Auth, users, billing, privacy |
 | HTTP | [interview-service](interview-service) | `uvicorn src.main:app` | WebSocket interview + coding/JD APIs |
-| HTTP | [practice-service](practice-service) | `uvicorn src.main:app` | Practice plans + notifications inbox |
 | Worker | [analyze-service](analyze-service) | `python -m src.main` | CV analysis pipeline (Docling) |
 | Worker | [notification-service](notification-service) | `python -m src.main` | Transactional email |
 

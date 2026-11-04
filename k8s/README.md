@@ -29,7 +29,6 @@ From the repository root:
 ```bash
 docker build -t ai-interview-tutor/user-management:latest -f user-management-service/Dockerfile .
 docker build -t ai-interview-tutor/interview-service:latest -f interview-service/Dockerfile .
-docker build -t ai-interview-tutor/practice-service:latest -f practice-service/Dockerfile .
 docker build -t ai-interview-tutor/analyze-service:latest -f analyze-service/Dockerfile .
 docker build -t ai-interview-tutor/notification-service:latest -f notification-service/Dockerfile .
 ```
@@ -41,7 +40,6 @@ docker build -t ai-interview-tutor/notification-service:latest -f notification-s
 ```bash
 minikube image load ai-interview-tutor/user-management:latest
 minikube image load ai-interview-tutor/interview-service:latest
-minikube image load ai-interview-tutor/practice-service:latest
 minikube image load ai-interview-tutor/analyze-service:latest
 minikube image load ai-interview-tutor/notification-service:latest
 ```
@@ -51,7 +49,6 @@ minikube image load ai-interview-tutor/notification-service:latest
 ```bash
 kind load docker-image ai-interview-tutor/user-management:latest
 kind load docker-image ai-interview-tutor/interview-service:latest
-kind load docker-image ai-interview-tutor/practice-service:latest
 kind load docker-image ai-interview-tutor/analyze-service:latest
 kind load docker-image ai-interview-tutor/notification-service:latest
 ```
@@ -113,7 +110,6 @@ kubectl -n ai-interview-tutor exec deploy/interview-service -- curl -sf http://l
 | nginx | Deployment + NodePort Service | API gateway, WebSocket sticky sessions (`ip_hash`) |
 | user-management | Deployment + Service :8000 | Runs Alembic migrations on startup |
 | interview-service | Deployment + Service :8001 | Readiness: `/health/ready` |
-| practice-service | Deployment + Service :8000 | Readiness: `/ready` |
 | analyze-service | Deployment (worker) | 4Gi memory limit |
 | notification-service | Deployment (worker) | No HTTP probes |
 | postgres | StatefulSet | DBs: `user_management`, `interview` |
