@@ -24,8 +24,6 @@ resources:
   - apps/user-management/deployment.yaml
   - apps/interview-service/service.yaml
   - apps/interview-service/deployment.yaml
-  - apps/practice-service/service.yaml
-  - apps/practice-service/deployment.yaml
   - apps/analyze-service/deployment.yaml
   - apps/notification-service/deployment.yaml
   - apps/nginx/service.yaml

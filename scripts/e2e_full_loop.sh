@@ -5,7 +5,6 @@ set -uo pipefail
 API_BASE="${API_BASE:-http://localhost/api/v1}"
 UMS_URL="${UMS_URL:-${API_BASE}}"
 INTERVIEW_URL="${INTERVIEW_URL:-http://localhost/api/v1/interview}"
-PRACTICE_URL="${PRACTICE_URL:-http://localhost/api/v1/practice}"
 EMAIL="${E2E_EMAIL:-e2e_$(date +%s)@example.com}"
 PASSWORD="${E2E_PASSWORD:-E2ePassw0rd!}"
 USERNAME="e2e_user_$(date +%s)"
@@ -64,16 +63,8 @@ echo "==> Interview sessions"
 curl_best_effort "${INTERVIEW_URL}/sessions" -H "$AUTH" | head -c 200 || echo "(sessions skipped)"
 echo
 
-echo "==> Practice profile"
-curl_best_effort "${PRACTICE_URL}/profile" -H "$AUTH" | head -c 200 || echo "(practice profile skipped)"
-echo
-
 echo "==> Entitlements"
 curl_best_effort "$UMS_URL/billing/entitlements" -H "$AUTH" | head -c 200 || echo "(billing skipped)"
-echo
-
-echo "==> Notifications inbox"
-curl_best_effort "${PRACTICE_URL%/practice}/notifications" -H "$AUTH" | head -c 200 || echo "(notifications skipped)"
 echo
 
 echo "==> E2E full loop finished (best-effort)"

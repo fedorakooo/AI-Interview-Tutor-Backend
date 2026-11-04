@@ -30,12 +30,6 @@ spec:
             - sh
             - -c
             - until wget -q -O /dev/null http://interview-service:8001/health/ready; do echo waiting for interview-service; sleep 2; done
-        - name: wait-for-practice-service
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - until wget -q -O /dev/null http://practice-service:8000/health; do echo waiting for practice-service; sleep 2; done
       containers:
         - name: nginx
           image: nginx:1.27-alpine

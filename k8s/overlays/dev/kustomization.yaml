@@ -14,8 +14,6 @@ replicas:
     count: 1
   - name: interview-service
     count: 1
-  - name: practice-service
-    count: 1
   - name: analyze-service
     count: 1
   - name: notification-service

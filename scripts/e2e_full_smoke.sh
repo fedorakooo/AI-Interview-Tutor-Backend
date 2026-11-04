@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Extended E2E: signup → CV → (optional) interview/practice smoke against running stack.
+# Extended E2E: signup → CV → (optional) interview smoke against running stack.
 set -euo pipefail
 API="${API_BASE:-http://localhost}"
 EMAIL="${E2E_EMAIL:-e2e_$(date +%s)@example.com}"

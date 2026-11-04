@@ -83,9 +83,6 @@ jobs:
           - name: notification
             working-directory: notification-service
             pytest-args: tests/unit_tests
-          - name: practice
-            working-directory: practice-service
-            pytest-args: tests/unit_tests tests/integration_tests
     defaults:
       run:
         working-directory: ${{ matrix.working-directory }}
@@ -227,7 +224,6 @@ jobs:
           - interview-service
           - analyze-service
           - notification-service
-          - practice-service
     steps:
       - name: Checkout
         uses: actions/checkout@v4

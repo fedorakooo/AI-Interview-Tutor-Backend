@@ -38,7 +38,6 @@ def main() -> None:
     targets = [
         (ROOT / "user-management-service", "src.main", "user-management"),
         (ROOT / "interview-service", "src.main", "interview"),
-        (ROOT / "practice-service", "src.main", "practice"),
     ]
     for service_dir, module, label in targets:
         result = _try_import_app(service_dir, module, label)
