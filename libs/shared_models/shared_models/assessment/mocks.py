@@ -18,7 +18,6 @@ from shared_models.assessment.report import (
     FocusAssessment,
     RedFlagFinding,
 )
-from shared_models.assessment.scoring import compute_focus_verdict
 from shared_models.assessment.session_events import (
     CandidateMessage,
     CompletionReason,
@@ -31,7 +30,6 @@ from shared_models.assessment.session_events import (
     SessionEvent,
     SessionStarted,
 )
-from shared_models.assessment.session_state import fold_events
 
 _NAMESPACE = UUID("6f1c2a4e-0b7d-4c1a-9a55-3d2f8e6b7c10")
 _STARTED_AT = datetime(2026, 11, 2, 10, 0, tzinfo=UTC)
@@ -341,6 +339,15 @@ _FOCUS_TEXTS: dict[str, tuple[str, str, str | None]] = {
 }
 
 
+_FOCUS_VERDICTS: dict[str, tuple[Verdict, float]] = {
+    "python_core": (Verdict.STRONG, 0.75),
+    "databases": (Verdict.ADEQUATE, 0.75),
+    "api_design": (Verdict.STRONG, 0.75),
+    "async_io": (Verdict.WEAK, 0.75),
+    "testing": (Verdict.NOT_ASSESSED, 0.2),
+}
+
+
 def mock_session_events(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> list[SessionEvent]:
     """Build a completed session journal, with an intro turn when no CV is attached."""
     template = mock_template(cv_policy)
@@ -423,14 +430,22 @@ def mock_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
     """Build a report consistent with the mock template and journal."""
     template = mock_template(cv_policy)
     events = mock_session_events(cv_policy)
-    state = fold_events(events)
+    all_evidence = [event.evidence for event in events if isinstance(event, EvidenceRecorded)]
+    coverage = {event.focus_id: event for event in events if isinstance(event, FocusCoverageChanged)}
+    questions_asked = len(
+        [
+            event
+            for event in events
+            if isinstance(event, InterviewerMessage) and event.kind in (MessageKind.QUESTION, MessageKind.FOLLOW_UP)
+        ]
+    )
 
     focus_assessments: list[FocusAssessment] = []
     for focus in template.criteria:
         summary, rationale, comparison = _FOCUS_TEXTS[focus.id]
-        evidence = [item for item in state.evidence if item.focus_id == focus.id]
-        verdict, confidence = compute_focus_verdict(focus, evidence)
-        covered = state.coverage[focus.id].covered_must_cover
+        evidence = [item for item in all_evidence if item.focus_id == focus.id]
+        verdict, confidence = _FOCUS_VERDICTS[focus.id]
+        covered = coverage[focus.id].covered_must_cover
         focus_assessments.append(
             FocusAssessment(
                 focus_id=focus.id,
@@ -446,14 +461,14 @@ def mock_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
         )
 
     testing_turn = _TURNS[-1]
-    testing_answer_seq = next(item.answer_seq for item in state.evidence if item.focus_id == "testing")
+    testing_answer_seq = next(item.answer_seq for item in all_evidence if item.focus_id == "testing")
     assessed = [item for item in focus_assessments if item.verdict != Verdict.NOT_ASSESSED]
     required_ids = {focus.id for focus in template.criteria if focus.required}
     return Assessment(
         assessment_id=_uid("assessment", cv_policy.value),
-        attempt_id=state.attempt_id,
-        session_id=state.session_id,
-        template_version=state.template_version,
+        attempt_id=mock_attempt_id(cv_policy),
+        session_id=mock_session_id(cv_policy),
+        template_version=MOCK_TEMPLATE_VERSION,
         generator_version=MOCK_GENERATOR_VERSION,
         generated_at=_STARTED_AT + timedelta(hours=1),
         coverage=AssessmentCoverage(
@@ -461,7 +476,7 @@ def mock_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
             focus_assessed=len(assessed),
             required_total=len(required_ids),
             required_assessed=len([item for item in assessed if item.focus_id in required_ids]),
-            questions_asked=state.questions_asked,
+            questions_asked=questions_asked,
         ),
         overall_summary=(
             "Strong on Python fundamentals and API design, adequate on databases. Async knowledge is weak, and "
