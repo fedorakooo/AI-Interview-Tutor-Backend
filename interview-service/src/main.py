@@ -1,6 +1,6 @@
 import logging
 
-import src.logger  # noqa: F401
+import src.logger  # noqa: F401  # isort: skip
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
