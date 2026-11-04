@@ -2,13 +2,12 @@ from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field, computed_field
+from shared_models.assessment.evidence import Verdict
 
-from shared_models.assessment.evidence import EvidenceItem, QuoteRef, Verdict
+from src.infrastructure.mongo.documents.evidence_document import EvidenceDocument, QuoteDocument
 
 
-class ReviewEntry(BaseModel):
-    """Append-only reviewer note on a focus area with an optional manual verdict."""
-
+class ReviewEntryDocument(BaseModel):
     review_id: UUID
     author_id: UUID
     created_at: datetime
@@ -16,17 +15,17 @@ class ReviewEntry(BaseModel):
     manual_verdict: Verdict | None = None
 
 
-class FocusAssessment(BaseModel):
+class FocusAssessmentDocument(BaseModel):
     focus_id: str = Field(min_length=1, max_length=64)
     verdict: Verdict
     confidence: float = Field(ge=0.0, le=1.0)
     summary_short: str = Field(min_length=1, max_length=200)
     rationale: str = Field(min_length=1, max_length=3000)
-    evidence: list[EvidenceItem] = Field(default_factory=list)
+    evidence: list[EvidenceDocument] = Field(default_factory=list)
     covered_must_cover: list[str] = Field(default_factory=list)
     missed_must_cover: list[str] = Field(default_factory=list)
     reference_comparison: str | None = Field(default=None, max_length=2000)
-    review: list[ReviewEntry] = Field(default_factory=list)
+    review: list[ReviewEntryDocument] = Field(default_factory=list)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -37,13 +36,13 @@ class FocusAssessment(BaseModel):
         return self.verdict
 
 
-class RedFlagFinding(BaseModel):
+class RedFlagFindingDocument(BaseModel):
     flag: str = Field(min_length=1, max_length=300)
-    quotes: list[QuoteRef] = Field(min_length=1, max_length=5)
+    quotes: list[QuoteDocument] = Field(min_length=1, max_length=5)
     reasoning: str = Field(min_length=1, max_length=1000)
 
 
-class AssessmentCoverage(BaseModel):
+class AssessmentCoverageDocument(BaseModel):
     focus_total: int = Field(ge=1)
     focus_assessed: int = Field(ge=0)
     required_total: int = Field(ge=1)
@@ -51,9 +50,7 @@ class AssessmentCoverage(BaseModel):
     questions_asked: int = Field(ge=0)
 
 
-class Assessment(BaseModel):
-    """Report derived from the session journal and the template version."""
-
+class AssessmentDocument(BaseModel):
     assessment_id: UUID
     attempt_id: UUID
     session_id: str = Field(min_length=1, max_length=128)
@@ -61,7 +58,7 @@ class Assessment(BaseModel):
     report_version: int = Field(default=1, ge=1)
     generator_version: str = Field(min_length=1, max_length=64)
     generated_at: datetime
-    coverage: AssessmentCoverage
+    coverage: AssessmentCoverageDocument
     overall_summary: str = Field(min_length=1, max_length=3000)
-    focus: list[FocusAssessment] = Field(min_length=1)
-    red_flags: list[RedFlagFinding] = Field(default_factory=list)
+    focus: list[FocusAssessmentDocument] = Field(min_length=1)
+    red_flags: list[RedFlagFindingDocument] = Field(default_factory=list)

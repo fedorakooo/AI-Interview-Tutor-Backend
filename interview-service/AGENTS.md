@@ -10,7 +10,7 @@ Runs the AI-led structured interview of a candidate over WebSocket and builds th
 | Evidence collection, assessment report, candidate feedback | CV analysis (analyze-service) |
 | Template draft generation from recruiter text | Notifications (notification-service) |
 
-Cross-service contracts live in `libs/shared_models` (template, context, `AssessmentCompleted`, views and requests). The session journal, evidence and the assessment are the internal model of this service and live in `domain`.
+Cross-service contracts live in `libs/shared_models` (template, context, `AssessmentCompleted`, views and requests, the `Verdict` and `EvidenceLevel` enums). The session journal, evidence and the assessment are the internal model of this service: the model lives in `domain` and the stored Mongo documents are described by pydantic schemas in `infrastructure/mongo/documents/`. The report views in `shared_models` (`EvidenceView`, `FocusAssessmentView` and others) are separate wire models with the same JSON shape.
 
 ## 2. Layer map
 
@@ -69,7 +69,8 @@ Top-level modules `src/config.py`, `src/logger.py` and `src/main.py` stay where 
 | Repository | `infrastructure/mongo/repositories/` | Maps documents to domain objects |
 | Index creation | `app/container.py` | The container lists the four Mongo repositories and keeps those that satisfy the `IndexedRepository` protocol (`infrastructure/mongo/indexed_repository.py`); the lifespan calls `ensure_indexes` on them |
 | Adapter | `infrastructure/{redis,rabbitmq,user_management,jwt}/` | Implements a port; uses the mappers for contract types |
-| Infrastructure mapper | `infrastructure/mappers/` | Contract and document types to domain types and back, one class per aggregate; `AssessmentCompleted` has one mapper shared by the publisher and the outbox repository |
+| Mongo document schema | `infrastructure/mongo/documents/` | Pydantic schemas of the stored journal events, evidence and assessment; the document format is fixed, change it only with a migration |
+| Infrastructure mapper | `infrastructure/mappers/` | Contract and document schemas to domain types and back, one class per aggregate (`to_model` builds a document schema, `to_domain` reads it); `AssessmentCompleted` has one mapper shared by the publisher and the outbox repository |
 | LLM agent | `agents/<role>/` | `agent.py` and `prompts.py`; `schemas.py` (pydantic output schema) and `mapper.py` (schema to domain) only when the agent returns structured output |
 | API schema | `api/v1/schemas/` | WebSocket protocol and HTTP bodies |
 | Error mapping | `api/errors/error_mapping.py` | One table for HTTP and WebSocket |
@@ -124,7 +125,6 @@ Top-level modules `src/config.py`, `src/logger.py` and `src/main.py` stay where 
 
 | Deviation | Reason or plan |
 |---|---|
-| `libs/shared_models` still holds the document and wire schemas of the journal and the report (`session_events`, `report`, `evidence`) and the static `mocks`; only `infrastructure/mappers` and tests import them, and no other service does | Move the schemas into `infrastructure/mongo` once `FocusDetail` and `TimelineEntry` in `views.py` stop referencing `FocusAssessment` and `EvidenceItem`; `Verdict` stays a contract enum |
 | No Unit of Work, unlike the default | Append-only journal with unique `(session_id, seq)` and a Redis lock; revisit if two repositories need an atomic write and Mongo transactions are available |
 | `record_evidence` appends events one by one, so it is not atomic: the `covered_must_cover` topics of an interrupted evaluation are lost, and a crash in the middle of several `EvidenceRecorded` events drops the remaining ones. Lost topics show up as false `missed_must_cover` in the report (`assessment_builder.py`) and in the growth topics of the candidate feedback (`feedback_digest_builder.py`) | Persist the topics in the evidence event or use a Mongo transaction (check the replica set first) |
 | `InterviewerTurn.run` is not atomic either: a crash between `InterviewerMessage(CLOSING)` and `SessionCompleted` repeats the turn without completing the session, and a reconnect writes a second closing message | Same fix as above: one atomic append of the closing message and the completion event |

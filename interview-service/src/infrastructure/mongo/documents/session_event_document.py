@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 
-from shared_models.assessment.evidence import EvidenceItem
+from src.infrastructure.mongo.documents.evidence_document import EvidenceDocument
 
 
 class MessageKind(StrEnum):
@@ -35,21 +35,21 @@ class CompletionReason(StrEnum):
     CANDIDATE_ENDED = "candidate_ended"
 
 
-class SessionEventBase(BaseModel):
+class SessionEventBaseDocument(BaseModel):
     event_id: UUID
     session_id: str = Field(min_length=1, max_length=128)
     seq: int = Field(ge=1)
     occurred_at: datetime
 
 
-class SessionStarted(SessionEventBase):
+class SessionStartedDocument(SessionEventBaseDocument):
     type: Literal["session_started"] = "session_started"
     attempt_id: UUID
     template_version: int = Field(ge=1)
     cv_attached: bool
 
 
-class InterviewerMessage(SessionEventBase):
+class InterviewerMessageDocument(SessionEventBaseDocument):
     type: Literal["interviewer_message"] = "interviewer_message"
     turn_id: UUID
     kind: MessageKind
@@ -58,7 +58,7 @@ class InterviewerMessage(SessionEventBase):
     custom_question_index: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def question_targets_focus(self) -> "InterviewerMessage":
+    def question_targets_focus(self) -> "InterviewerMessageDocument":
         asks = self.kind in (MessageKind.QUESTION, MessageKind.FOLLOW_UP)
         if asks and self.focus_id is None:
             raise ValueError("Questions must target a focus area")
@@ -67,18 +67,18 @@ class InterviewerMessage(SessionEventBase):
         return self
 
 
-class CandidateMessage(SessionEventBase):
+class CandidateMessageDocument(SessionEventBaseDocument):
     type: Literal["candidate_message"] = "candidate_message"
     turn_id: UUID
     text: str = Field(min_length=1, max_length=8000)
 
 
-class EvidenceRecorded(SessionEventBase):
+class EvidenceRecordedDocument(SessionEventBaseDocument):
     type: Literal["evidence_recorded"] = "evidence_recorded"
-    evidence: EvidenceItem
+    evidence: EvidenceDocument
 
 
-class FocusCoverageChanged(SessionEventBase):
+class FocusCoverageChangedDocument(SessionEventBaseDocument):
     type: Literal["focus_coverage_changed"] = "focus_coverage_changed"
     focus_id: str = Field(min_length=1, max_length=64)
     status: CoverageStatus
@@ -86,32 +86,31 @@ class FocusCoverageChanged(SessionEventBase):
     covered_must_cover: list[str] = Field(default_factory=list)
 
 
-class SessionPaused(SessionEventBase):
+class SessionPausedDocument(SessionEventBaseDocument):
     type: Literal["session_paused"] = "session_paused"
     reason: PauseReason
 
 
-class SessionCompleted(SessionEventBase):
+class SessionCompletedDocument(SessionEventBaseDocument):
     type: Literal["session_completed"] = "session_completed"
     reason: CompletionReason
 
 
-class SessionFailed(SessionEventBase):
+class SessionFailedDocument(SessionEventBaseDocument):
     type: Literal["session_failed"] = "session_failed"
     error_code: str = Field(min_length=1, max_length=64)
 
 
-SessionEvent = Annotated[
-    SessionStarted
-    | InterviewerMessage
-    | CandidateMessage
-    | EvidenceRecorded
-    | FocusCoverageChanged
-    | SessionPaused
-    | SessionCompleted
-    | SessionFailed,
+SessionEventDocument = Annotated[
+    SessionStartedDocument
+    | InterviewerMessageDocument
+    | CandidateMessageDocument
+    | EvidenceRecordedDocument
+    | FocusCoverageChangedDocument
+    | SessionPausedDocument
+    | SessionCompletedDocument
+    | SessionFailedDocument,
     Field(discriminator="type"),
 ]
 
-SessionEventAdapter: TypeAdapter[SessionEvent] = TypeAdapter(SessionEvent)
-SessionEventLogAdapter: TypeAdapter[list[SessionEvent]] = TypeAdapter(list[SessionEvent])
+SessionEventAdapter: TypeAdapter[SessionEventDocument] = TypeAdapter(SessionEventDocument)

@@ -11,6 +11,8 @@ from src.infrastructure.mappers.assessment_context_mapper import AssessmentConte
 from src.infrastructure.mappers.assessment_mapper import AssessmentMapper
 from src.infrastructure.mappers.session_event_mapper import SessionEventMapper
 
+from tests.fakes import journal_mocks
+
 
 def _contract_policy(cv_policy: CvPolicy):
     return mocks.CvPolicy(cv_policy.value)
@@ -25,11 +27,13 @@ def build_template(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> InterviewTemplate
 
 
 def build_events(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> list[SessionEvent]:
-    return [SessionEventMapper.to_domain(event) for event in mocks.mock_session_events(_contract_policy(cv_policy))]
+    return [
+        SessionEventMapper.to_domain(event) for event in journal_mocks.mock_session_events(_contract_policy(cv_policy))
+    ]
 
 
 def build_assessment(cv_policy: CvPolicy = CvPolicy.REQUIRED) -> Assessment:
-    return AssessmentMapper.to_domain(mocks.mock_assessment(_contract_policy(cv_policy)))
+    return AssessmentMapper.to_domain(journal_mocks.mock_assessment(_contract_policy(cv_policy)))
 
 
 def build_texts(template: InterviewTemplate, **overrides) -> AssessmentTexts:

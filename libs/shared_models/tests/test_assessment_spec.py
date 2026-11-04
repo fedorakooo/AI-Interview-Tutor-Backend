@@ -1,27 +1,14 @@
-from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel, ValidationError
 from shared_models.assessment import (
-    Assessment,
     AssessmentContext,
     AssessmentTemplateSnapshot,
     CvPolicy,
-    QuoteRef,
-    ReviewEntry,
     RubricCriterion,
-    SessionCompleted,
-    SessionEventLogAdapter,
-    SessionStarted,
-    Verdict,
 )
-from shared_models.assessment.mocks import (
-    mock_assessment,
-    mock_assessment_context,
-    mock_session_events,
-    mock_template,
-)
+from shared_models.assessment.mocks import mock_assessment_context, mock_template
 
 POLICIES = [CvPolicy.REQUIRED, CvPolicy.NONE]
 
@@ -185,34 +172,6 @@ class TestAssessmentContext:
             AssessmentContext.model_validate(payload)
 
 
-class TestQuoteRef:
-    def test_rejects_an_inconsistent_span(self) -> None:
-        with pytest.raises(ValidationError):
-            QuoteRef(event_seq=1, start=0, end=5, text="abc")
-
-
-class TestReview:
-    def test_final_verdict_is_last_manual_override_else_ai(self) -> None:
-        focus = mock_assessment().focus[3]
-        assert focus.final_verdict == Verdict.WEAK
-
-        def entry(verdict: Verdict | None) -> ReviewEntry:
-            return ReviewEntry(
-                review_id=uuid4(),
-                author_id=uuid4(),
-                created_at=datetime(2026, 11, 3, tzinfo=UTC),
-                comment="note",
-                manual_verdict=verdict,
-            )
-
-        reviewed = focus.model_copy(update={"review": [entry(Verdict.ADEQUATE), entry(None)]})
-        assert reviewed.verdict == Verdict.WEAK
-        assert reviewed.final_verdict == Verdict.ADEQUATE
-
-        overridden = focus.model_copy(update={"review": [*reviewed.review, entry(Verdict.STRONG)]})
-        assert overridden.final_verdict == Verdict.STRONG
-
-
 def _round_trip(model: BaseModel) -> BaseModel:
     return type(model).model_validate_json(model.model_dump_json())
 
@@ -228,17 +187,3 @@ class TestJsonRoundTrip:
         context = mock_assessment_context(policy)
 
         assert _round_trip(context) == context
-
-    def test_assessment(self, policy: CvPolicy) -> None:
-        assessment = mock_assessment(policy)
-
-        assert _round_trip(assessment) == assessment
-        assert Assessment.model_validate_json(assessment.model_dump_json()).focus[0].final_verdict == Verdict.STRONG
-
-    def test_event_log_discriminated_union(self, policy: CvPolicy) -> None:
-        events = mock_session_events(policy)
-        restored = SessionEventLogAdapter.validate_json(SessionEventLogAdapter.dump_json(events))
-
-        assert restored == events
-        assert isinstance(restored[0], SessionStarted)
-        assert isinstance(restored[-1], SessionCompleted)

@@ -1,6 +1,3 @@
-from shared_models.assessment import evidence as contract_evidence
-from shared_models.assessment import report as contract
-
 from src.domain.entities.assessment import Assessment
 from src.domain.entities.focus_assessment import FocusAssessment
 from src.domain.enums.verdict import Verdict
@@ -8,12 +5,18 @@ from src.domain.value_objects.assessment_coverage import AssessmentCoverage
 from src.domain.value_objects.red_flag_finding import RedFlagFinding
 from src.infrastructure.mappers.evidence_mapper import EvidenceMapper
 from src.infrastructure.mappers.review_entry_mapper import ReviewEntryMapper
+from src.infrastructure.mongo.documents.assessment_document import (
+    AssessmentCoverageDocument,
+    AssessmentDocument,
+    FocusAssessmentDocument,
+    RedFlagFindingDocument,
+)
 
 
 class AssessmentMapper:
     @staticmethod
-    def to_contract(assessment: Assessment) -> contract.Assessment:
-        return contract.Assessment(
+    def to_model(assessment: Assessment) -> AssessmentDocument:
+        return AssessmentDocument(
             assessment_id=assessment.assessment_id,
             attempt_id=assessment.attempt_id,
             session_id=assessment.session_id,
@@ -21,7 +24,7 @@ class AssessmentMapper:
             report_version=assessment.report_version,
             generator_version=assessment.generator_version,
             generated_at=assessment.generated_at,
-            coverage=contract.AssessmentCoverage(
+            coverage=AssessmentCoverageDocument(
                 focus_total=assessment.coverage.focus_total,
                 focus_assessed=assessment.coverage.focus_assessed,
                 required_total=assessment.coverage.required_total,
@@ -30,24 +33,24 @@ class AssessmentMapper:
             ),
             overall_summary=assessment.overall_summary,
             focus=[
-                contract.FocusAssessment(
+                FocusAssessmentDocument(
                     focus_id=item.focus_id,
-                    verdict=contract_evidence.Verdict(item.verdict.value),
+                    verdict=item.verdict.value,
                     confidence=item.confidence,
                     summary_short=item.summary_short,
                     rationale=item.rationale,
-                    evidence=[EvidenceMapper.to_contract(evidence) for evidence in item.evidence],
+                    evidence=[EvidenceMapper.to_model(evidence) for evidence in item.evidence],
                     covered_must_cover=list(item.covered_must_cover),
                     missed_must_cover=list(item.missed_must_cover),
                     reference_comparison=item.reference_comparison,
-                    review=[ReviewEntryMapper.to_contract(entry) for entry in item.review],
+                    review=[ReviewEntryMapper.to_model(entry) for entry in item.review],
                 )
                 for item in assessment.focus
             ],
             red_flags=[
-                contract.RedFlagFinding(
+                RedFlagFindingDocument(
                     flag=finding.flag,
-                    quotes=[EvidenceMapper.quote_to_contract(quote) for quote in finding.quotes],
+                    quotes=[EvidenceMapper.quote_to_model(quote) for quote in finding.quotes],
                     reasoning=finding.reasoning,
                 )
                 for finding in assessment.red_flags
@@ -55,7 +58,7 @@ class AssessmentMapper:
         )
 
     @staticmethod
-    def to_domain(assessment: contract.Assessment) -> Assessment:
+    def to_domain(assessment: AssessmentDocument) -> Assessment:
         return Assessment(
             assessment_id=assessment.assessment_id,
             attempt_id=assessment.attempt_id,
