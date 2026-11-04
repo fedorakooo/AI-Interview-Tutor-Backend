@@ -4,14 +4,14 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from shared_models.assessment import (
-    AssessmentCoverage,
+    AssessmentCoverageView,
     AssessmentOverview,
-    EvidenceItem,
     EvidenceLevel,
-    FocusAssessment,
+    EvidenceView,
+    FocusAssessmentView,
     FocusDetail,
     FocusOverview,
-    QuoteRef,
+    QuoteView,
     RedFlagOverview,
     ReviewRequest,
     TimelineEntry,
@@ -30,18 +30,18 @@ ANSWER = "I would run EXPLAIN ANALYZE first and then add a composite index."
 
 
 def focus_detail(focus_id: str) -> FocusDetail:
-    evidence = EvidenceItem(
+    evidence = EvidenceView(
         evidence_id=UUID("0b4f4a9e-6f3a-4a5c-8d57-1c2f3d4e5f60"),
         focus_id=focus_id,
         question_seq=2,
         answer_seq=3,
         level=EvidenceLevel.STRONG,
         matched_signals=["Chooses indexes based on query plans"],
-        quotes=[QuoteRef(event_seq=3, start=8, end=23, text="EXPLAIN ANALYZE")],
+        quotes=[QuoteView(event_seq=3, start=8, end=23, text="EXPLAIN ANALYZE")],
         reasoning="Plan-first investigation.",
     )
     return FocusDetail(
-        focus=FocusAssessment(
+        focus=FocusAssessmentView(
             focus_id=focus_id,
             verdict=Verdict.STRONG,
             confidence=0.75,
@@ -75,7 +75,7 @@ def overview() -> AssessmentOverview:
         report_version=1,
         generator_version="test-1",
         generated_at=datetime(2026, 11, 2, 11, 0, tzinfo=UTC),
-        coverage=AssessmentCoverage(
+        coverage=AssessmentCoverageView(
             focus_total=2, focus_assessed=1, required_total=1, required_assessed=1, questions_asked=4
         ),
         overall_summary="Strong on databases; async knowledge could not be assessed.",
