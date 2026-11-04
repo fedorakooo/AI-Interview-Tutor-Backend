@@ -1127,7 +1127,7 @@ develop = true
 [package.dependencies]
 pydantic = "^2.11.7"
 pydantic-settings = "2.10.1"
-pyjwt = "2.10.1"
+pyjwt = {version = "2.10.1", extras = ["crypto"]}
 pyyaml = "^6.0.2"
 
 [package.source]

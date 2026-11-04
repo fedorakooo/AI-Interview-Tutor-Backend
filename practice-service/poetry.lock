@@ -1053,7 +1053,7 @@ develop = true
 [package.dependencies]
 pydantic = "^2.11.7"
 pydantic-settings = "2.10.1"
-pyjwt = "2.10.1"
+pyjwt = {version = "2.10.1", extras = ["crypto"]}
 pyyaml = "^6.0.2"
 
 [package.source]
@@ -2001,6 +2001,9 @@ files = [
     {file = "PyJWT-2.10.1-py3-none-any.whl", hash = "sha256:dcdd193e30abefd5debf142f9adfcdd2b58004e644f25406ffaebd50bd98dacb"},
     {file = "pyjwt-2.10.1.tar.gz", hash = "sha256:3cc5772eb20009233caf06e9d8a0577824723b44e6648ee0a2aedb6cf9381953"},
 ]
+
+[package.dependencies]
+cryptography = {version = ">=3.4.0", optional = true, markers = "extra == \"crypto\""}
 
 [package.extras]
 crypto = ["cryptography (>=3.4.0)"]
