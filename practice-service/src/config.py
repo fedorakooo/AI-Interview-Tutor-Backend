@@ -70,7 +70,6 @@ class JWTSettings(BaseSettings):
 
 class PracticeSettings(BaseSettings):
     max_exercises_per_plan: int = 15
-    default_exercise_count: int = 8
     min_exercise_count: int = 3
     default_daily_plan_quota: int = 3
     llm_temperature: float = 0.5
@@ -79,7 +78,6 @@ class PracticeSettings(BaseSettings):
     llm_timeout_seconds: int = 60
     grading_timeout_seconds: int = 30
     max_generation_retries: int = 2
-    interview_report_retry_seconds: float = 2.0
     supported_exercise_types: list[str] = Field(
         default_factory=lambda: [
             "mcq_single",
@@ -124,7 +122,6 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     google_llm: LLMConfig = Field(default_factory=lambda: LLMConfig(model="gemini-2.0-flash"))
     practice_grading_model: str = Field(default="", validation_alias="PRACTICE_GRADING_MODEL")
-    practice_report_model: str = Field(default="", validation_alias="PRACTICE_REPORT_MODEL")
 
     mongo_settings: MongoSettings = Field(default_factory=MongoSettings)
     rabbitmq_settings: RabbitMQSettings = Field(default_factory=RabbitMQSettings)
