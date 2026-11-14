@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -46,7 +46,6 @@ from src.domain.interfaces.repositories.interview_event_repository import IInter
 from src.domain.interfaces.session.session_lock import ISessionLock
 from src.domain.interfaces.session.session_presence import ISessionPresence
 from src.infrastructure.jwt.attempt_token_verifier import AttemptTokenVerifier
-from src.infrastructure.mongo.indexed_repository import IndexedRepository
 from src.infrastructure.mongo.repositories.assessment_repository import AssessmentRepository
 from src.infrastructure.mongo.repositories.attempt_data_repository import AttemptDataRepository
 from src.infrastructure.mongo.repositories.candidate_cv_repository import CandidateCvRepository
@@ -68,7 +67,7 @@ class AppContainer:
     data_erasure_service: IDataErasureService
     completion_dispatcher: CompletionOutboxDispatcher
     completed_publisher: IAssessmentCompletedPublisher
-    indexed_repositories: list[IndexedRepository]
+    index_creators: list[Callable[[], Awaitable[None]]]
 
 
 def build_container(
@@ -99,19 +98,29 @@ def build_container(
     def collection(name: str) -> AsyncIOMotorCollection:
         return mongo_client[mongo_settings.db_name][name]
 
-    event_repository = event_repository or InterviewEventRepository(
-        collection(mongo_settings.interview_events_collection_name)
-    )
-    assessment_repository = assessment_repository or AssessmentRepository(
-        collection(mongo_settings.interview_assessments_collection_name),
-        collection(mongo_settings.interview_assessment_reviews_collection_name),
-    )
-    feedback_repository = feedback_repository or FeedbackRepository(
-        collection(mongo_settings.interview_feedback_collection_name)
-    )
-    completion_outbox_repository = completion_outbox_repository or CompletionOutboxRepository(
-        collection(mongo_settings.interview_completion_outbox_collection_name)
-    )
+    index_creators: list[Callable[[], Awaitable[None]]] = []
+
+    if event_repository is None:
+        mongo_event_repository = InterviewEventRepository(collection(mongo_settings.interview_events_collection_name))
+        index_creators.append(mongo_event_repository.ensure_indexes)
+        event_repository = mongo_event_repository
+    if assessment_repository is None:
+        mongo_assessment_repository = AssessmentRepository(
+            collection(mongo_settings.interview_assessments_collection_name),
+            collection(mongo_settings.interview_assessment_reviews_collection_name),
+        )
+        index_creators.append(mongo_assessment_repository.ensure_indexes)
+        assessment_repository = mongo_assessment_repository
+    if feedback_repository is None:
+        mongo_feedback_repository = FeedbackRepository(collection(mongo_settings.interview_feedback_collection_name))
+        index_creators.append(mongo_feedback_repository.ensure_indexes)
+        feedback_repository = mongo_feedback_repository
+    if completion_outbox_repository is None:
+        mongo_outbox_repository = CompletionOutboxRepository(
+            collection(mongo_settings.interview_completion_outbox_collection_name)
+        )
+        index_creators.append(mongo_outbox_repository.ensure_indexes)
+        completion_outbox_repository = mongo_outbox_repository
     attempt_data_repository = attempt_data_repository or AttemptDataRepository(
         events=collection(mongo_settings.interview_events_collection_name),
         assessments=collection(mongo_settings.interview_assessments_collection_name),
@@ -145,12 +154,6 @@ def build_container(
     cv_loader = CvLoader(cv_repository)
     report_loader = ReportLoader(event_repository, assessment_repository, assessment_text_writer, clock)
 
-    indexed_repositories = [
-        repository
-        for repository in (event_repository, assessment_repository, feedback_repository, completion_outbox_repository)
-        if isinstance(repository, IndexedRepository)
-    ]
-
     return AppContainer(
         interview_session_service=InterviewSessionService(
             AttemptTokenVerifier(token_verifier),
@@ -172,5 +175,5 @@ def build_container(
         data_erasure_service=DataErasureService(lock, attempt_data_repository),
         completion_dispatcher=CompletionOutboxDispatcher(completion_outbox_repository, completed_publisher),
         completed_publisher=completed_publisher,
-        indexed_repositories=indexed_repositories,
+        index_creators=index_creators,
     )

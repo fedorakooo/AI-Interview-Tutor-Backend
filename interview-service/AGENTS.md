@@ -67,7 +67,7 @@ Top-level modules `src/config.py`, `src/logger.py` and `src/main.py` stay where 
 | DTO | `application/dtos/` | Stream outputs such as `MessageDelta`, `SessionOutput` |
 | Mapper | `application/mappers/` | Domain to contract views, draft to template, assessment to feedback digest |
 | Repository | `infrastructure/mongo/repositories/` | Maps documents to domain objects |
-| Index creation | `app/container.py` | The container lists the four Mongo repositories and keeps those that satisfy the `IndexedRepository` protocol (`infrastructure/mongo/indexed_repository.py`); the lifespan calls `ensure_indexes` on them |
+| Index creation | `app/container.py` | The container collects `ensure_indexes` of the Mongo repositories it creates itself (not injected ones) into `index_creators`; the lifespan awaits them |
 | Adapter | `infrastructure/{redis,rabbitmq,user_management,jwt}/` | Implements a port; uses the mappers for contract types |
 | Mongo document schema | `infrastructure/mongo/documents/` | Pydantic schemas of the stored journal events, evidence and assessment; the document format is fixed, change it only with a migration |
 | Infrastructure mapper | `infrastructure/mappers/` | Contract and document schemas to domain types and back, one class per aggregate (`to_model` builds a document schema, `to_domain` reads it); `AssessmentCompleted` has one mapper shared by the publisher and the outbox repository |

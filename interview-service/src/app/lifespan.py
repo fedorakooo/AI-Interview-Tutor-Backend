@@ -16,8 +16,8 @@ async def lifespan(app: FastAPI):
 
     async with httpx.AsyncClient(timeout=settings.user_management_settings.timeout_seconds) as http_client:
         container = build_container(mongo_client, redis_client, http_client)
-        for repository in container.indexed_repositories:
-            await repository.ensure_indexes()
+        for ensure_indexes in container.index_creators:
+            await ensure_indexes()
         await container.completion_dispatcher.start()
 
         app.state.container = container
